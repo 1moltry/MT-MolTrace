@@ -126,12 +126,13 @@ class MainWindow(QMainWindow):
             return
         self.event.select_row(idx)
         self.scatter.highlight(idx)
-        self._show_row(c.df.iloc[idx])
+        self._show_row(c.df.iloc[idx], idx + 1)
 
-    def _show_row(self, row) -> None:
+    def _show_row(self, row, number: int | None = None) -> None:
         """Focus the main view on an event span (pan, no zoom) + fill the slice."""
         c = ctrl_mod.controller
         self.wave.focus_event(float(row["t1"]), float(row["t2"]))
         self.slice.set_row(row,
                            c.rec.current if c.rec is not None else None,
-                           c.rec.sample_rate_hz if c.rec is not None else 0.0)
+                           c.rec.sample_rate_hz if c.rec is not None else 0.0,
+                           number=number)

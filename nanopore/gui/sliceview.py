@@ -65,8 +65,12 @@ class SliceView(QWidget):
         self._clear_markers()
         self._title.setText("（未选择事件）")
 
-    def set_row(self, row, raw, sr) -> None:
-        """Draw the event in ``row`` (a feature-table row) from ``raw``/``sr``."""
+    def set_row(self, row, raw, sr, number: int | None = None) -> None:
+        """Draw the event in ``row`` (a feature-table row) from ``raw``/``sr``.
+
+        ``number`` is the 1-based event number shown in the title, so the slice
+        can be referred to unambiguously.
+        """
         if row is None or raw is None or not sr:
             self.clear()
             return
@@ -108,6 +112,8 @@ class SliceView(QWidget):
 
         parts = [f"t1 {t1:.4f} s", f"dwell {_num(row, 'toff'):.3f} ms",
                  f"ΔI {_num(row, 'mean'):.1f} pA"]
+        if number is not None:
+            parts.insert(0, f"事件 #{number}")
         if np.isfinite(io):
             parts.append(f"Io {io:.1f} pA")
         st = row.get("state", "") if hasattr(row, "get") else ""

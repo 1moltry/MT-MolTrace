@@ -2,6 +2,11 @@
 
 Rows carry the original DataFrame index in ``Qt.UserRole`` so the table can be
 filtered by state while still emitting the correct event index on selection.
+
+A leading **序号** column shows the stable 1-based event number (original
+detection order, unaffected by the state filter) so events can be referred to
+unambiguously. It is display-only — the exported feature-table columns are
+unchanged.
 """
 
 from __future__ import annotations
@@ -49,11 +54,11 @@ class EventsModel(QAbstractTableModel):
         return int(len(self._rows))
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return len(COLS)
+        return len(COLS) + 1                     # +1 for the 序号 column
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            return COLS[section]
+            return "序号" if section == 0 else COLS[section - 1]
         return None
 
     def data(self, index, role=Qt.DisplayRole):
@@ -65,7 +70,9 @@ class EventsModel(QAbstractTableModel):
         if role == Qt.UserRole:
             return orig
         if role == Qt.DisplayRole:
-            val = self._df.iloc[orig][COLS[index.column()]]
+            if index.column() == 0:
+                return str(orig + 1)             # stable 1-based event number
+            val = self._df.iloc[orig][COLS[index.column() - 1]]
             if isinstance(val, float):
                 if val != val:  # NaN
                     return "nan"

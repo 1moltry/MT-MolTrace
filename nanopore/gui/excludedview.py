@@ -27,11 +27,11 @@ class ExcludedModel(QAbstractTableModel):
         return 0 if self._df is None else len(self._df)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return len(COLS)
+        return len(COLS) + 1                     # +1 for the 序号 column
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            return COLS[section]
+            return "序号" if section == 0 else COLS[section - 1]
         return None
 
     def data(self, index, role=Qt.DisplayRole):
@@ -40,7 +40,9 @@ class ExcludedModel(QAbstractTableModel):
         if role == Qt.UserRole:
             return int(index.row())
         if role == Qt.DisplayRole:
-            v = self._df.iloc[index.row()][COLS[index.column()]]
+            if index.column() == 0:
+                return str(index.row() + 1)
+            v = self._df.iloc[index.row()][COLS[index.column() - 1]]
             if isinstance(v, float):
                 return "nan" if v != v else f"{v:.4g}"
             return str(v)
@@ -87,4 +89,4 @@ class ExcludedView(QWidget):
             return
         i = self.model.data(current, Qt.UserRole)
         if isinstance(i, int) and 0 <= i < len(self._df):
-            self._on_select(self._df.iloc[i])
+            self._on_select(self._df.iloc[i], i + 1)   # (row, 1-based 序号)

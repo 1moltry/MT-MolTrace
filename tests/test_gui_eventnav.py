@@ -13,7 +13,10 @@ import pytest
 pytest.importorskip("PyQt5")
 pytest.importorskip("pyqtgraph")
 
+from PyQt5.QtCore import Qt
+
 from nanopore.gui.bus import bus
+from nanopore.gui.eventtable import EventTable
 from nanopore.gui.excludedview import ExcludedView
 from nanopore.gui.sliceview import SliceView
 from nanopore.gui.waveview import WaveView
@@ -90,6 +93,30 @@ def test_wave_click_selects_nearest_event(qapp):
     assert got == [1, 0]
 
 
+def _event_df():
+    cols = ["t1", "t2", "toff", "mean", "%mean", "Io", "std", "skew", "kurt",
+            "MAD", "CV", "q1", "q2", "q3", "iqr", "outlier_ratio", "ton", "state"]
+    d = {c: [0.0, 0.0] for c in cols}
+    d["t1"] = [1.0, 3.0]
+    d["t2"] = [1.5, 3.2]
+    d["state"] = ["A", "B"]
+    return pd.DataFrame(d)
+
+
+# ---- event table: stable 序号 -------------------------------------------
+def test_event_table_has_stable_row_numbers(qapp):
+    table = EventTable()
+    table.set_data(_event_df())
+    m = table.model
+    assert m.headerData(0, Qt.Horizontal) == "序号"
+    assert m.data(m.index(0, 0)) == "1"
+    assert m.data(m.index(1, 0)) == "2"
+    # filtering by state keeps the original (stable) numbering
+    table.state_combo.setCurrentText("B")
+    assert m.rowCount() == 1
+    assert m.data(m.index(0, 0)) == "2"
+
+
 # ---- zoom slice ----------------------------------------------------------
 def test_slice_shows_event(qapp):
     view = SliceView()
@@ -98,6 +125,12 @@ def test_slice_shows_event(qapp):
     assert xs is not None and len(xs) > 0
     assert "dwell 500.000 ms" in view._title.text()
     assert len(view._markers) >= 2          # start/end lines (+ open-pore ref)
+
+
+def test_slice_title_shows_event_number(qapp):
+    view = SliceView()
+    view.set_row(_df().iloc[0], _rec().current, 25_000.0, number=7)
+    assert "事件 #7" in view._title.text()
 
 
 def test_slice_clear(qapp):
@@ -111,7 +144,7 @@ def test_slice_clear(qapp):
 # ---- excluded-events table ----------------------------------------------
 def test_excluded_view_lists_and_signals(qapp):
     picks = []
-    view = ExcludedView(on_select=lambda row: picks.append(row))
+    view = ExcludedView(on_select=lambda row, n: picks.append((row, n)))
     df_ex = pd.DataFrame({
         "t1": [2.0], "t2": [2.1], "toff": [100.0], "mean": [-9.0],
         "Io": [100.0], "state": ["A"], "drop_reason": ["toff<min"],
@@ -119,5 +152,8 @@ def test_excluded_view_lists_and_signals(qapp):
     view.set_data(df_ex)
     assert view.model.rowCount() == 1
     assert "剔除事件 1" in view.summary.text()
+    assert view.model.data(view.model.index(0, 0)) == "1"      # 序号
     view.view.selectRow(0)
-    assert len(picks) == 1 and float(picks[0]["t1"]) == 2.0
+    assert len(picks) == 1
+    assert picks[0][1] == 1                                    # 1-based number
+    assert float(picks[0][0]["t1"]) == 2.0
