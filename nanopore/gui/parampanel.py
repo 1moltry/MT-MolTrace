@@ -14,6 +14,8 @@ Layout:
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict, fields
 from pathlib import Path
 
 from PyQt5.QtCore import QSettings
@@ -297,19 +299,38 @@ class ParamPanel(QWidget):
 
     def _sync_mode(self) -> None:
         self.burst_box.setVisible(self.event_mode.currentData() == "burst")
+        self._save_settings()
 
     def _load_settings(self) -> None:
-        saved = QSettings(*_SETTINGS).value("enabled_mods", None)
+        s = QSettings(*_SETTINGS)
+        last = s.value("last_config", None)
+        if last:
+            try:
+                data = json.loads(str(last))
+                valid = {f.name for f in fields(PipelineConfig)}
+                self.load_config(PipelineConfig(**{k: v for k, v in data.items() if k in valid}))
+                return
+            except Exception:                    # noqa: BLE001 — corrupt settings: use defaults
+                pass
+        saved = s.value("enabled_mods", None)
         if saved is None:
             ids = [mid for mid in ORDER if MODS[mid].default_on]
         else:
-            ids = [s for s in str(saved).split(",") if s]
+            ids = [x for x in str(saved).split(",") if x]
         idset = set(resolve_mods(ids))
         for mid in ORDER:
             self.mod_boxes[mid].setChecked(mid in idset)
 
     def _save_settings(self) -> None:
-        QSettings(*_SETTINGS).setValue("enabled_mods", ",".join(self._checked_raw()))
+        s = QSettings(*_SETTINGS)
+        s.setValue("enabled_mods", ",".join(self._checked_raw()))
+        try:
+            # remember the full protocol (detection mode + every parameter),
+            # not just the module checkboxes — otherwise the mode silently
+            # reverts to "level" on restart and the results change underfoot.
+            s.setValue("last_config", json.dumps(asdict(self.build_config()), ensure_ascii=False))
+        except Exception:                        # noqa: BLE001
+            pass
 
     # ---------------- config round-trip ----------------
     def build_config(self) -> PipelineConfig:
@@ -380,6 +401,7 @@ class ParamPanel(QWidget):
         if controller.rec is None:
             bus.status.emit("请先打开一个 .abf 文件")
             return
+        self._save_settings()
         controller.set_config(self.build_config())
         controller.rerun()
 

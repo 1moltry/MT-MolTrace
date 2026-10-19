@@ -118,7 +118,8 @@ class Controller(QObject):
         self.df_excluded = df_excluded
         self.anom, self.det = anom_det
         n_removed = len(df_excluded) if df_excluded is not None else 0
-        bus.status.emit(f"完成: {rec.path.name}\t保留 {len(df)} / 剔除 {n_removed}（明细见异常面板）")
+        mode = getattr(self.cfg, "event_mode", "level")
+        bus.status.emit(f"完成[{mode}]: {rec.path.name}\t保留 {len(df)} / 剔除 {n_removed}（明细见异常面板）")
         bus.file_loaded.emit(str(rec.path))
         bus.detection_finished.emit()
 

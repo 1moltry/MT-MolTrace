@@ -169,7 +169,7 @@ def _panel(monkeypatch):
     _QAPP = QApplication.instance() or QApplication(sys.argv)
     # isolate from the user's real persisted selection, and start deterministic
     monkeypatch.setattr(pp, "_SETTINGS", ("SDL-Nanopore-test", "gui"))
-    QSettings("SDL-Nanopore-test", "gui").remove("enabled_mods")
+    QSettings("SDL-Nanopore-test", "gui").clear()
     return pp.ParamPanel()
 
 
@@ -201,3 +201,16 @@ def test_gui_build_config_carries_enabled_mods(monkeypatch):
     cfg = panel.build_config()
     assert tuple(cfg.enabled_mods) == ("plots",)
     assert not hasattr(cfg, "anomaly_enabled")
+
+
+def test_gui_remembers_detection_mode_and_params(monkeypatch):
+    panel = _panel(monkeypatch)
+    panel.event_mode.setCurrentIndex(panel.event_mode.findData("burst"))
+    panel.b_gap.setValue(123.0)
+    panel._save_settings()
+
+    from nanopore.gui import parampanel as pp
+
+    restored = pp.ParamPanel()          # same (monkeypatched) QSettings
+    assert restored.event_mode.currentData() == "burst"
+    assert restored.b_gap.value() == 123.0
