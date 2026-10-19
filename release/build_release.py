@@ -216,6 +216,24 @@ def freeze(py: str, icon: Path) -> None:
     run(args, cwd=STAGE)
 
 
+def find_dll(name: str) -> Path | None:
+    """Resolve a DLL that PyInstaller failed to trace.
+
+    ``shutil.which`` alone is unreliable here: MSYS/bash PATH conversion and
+    Anaconda layouts hide ``Library/bin``. Also probe the interpreter's own
+    folders, where Anaconda keeps ``ffi.dll`` and ``libexpat.dll``.
+    """
+    found = shutil.which(name)
+    if found:
+        return Path(found)
+    for base in (Path(sys.base_prefix), Path(sys.prefix)):
+        for rel in ("DLLs", "Library/bin", "Library/mingw-w64/bin"):
+            candidate = base / rel / name
+            if candidate.exists():
+                return candidate
+    return None
+
+
 def bundle_missing_dlls(app_dir: Path) -> list[str]:
     """Copy DLLs that PyInstaller could not trace.
 
@@ -223,9 +241,9 @@ def bundle_missing_dlls(app_dir: Path) -> list[str]:
     ``_ctypes``, ``libexpat.dll`` for ``pyexpat``) under ``Library/bin``, outside
     the interpreter folder, so they are invisible to PyInstaller's dependency
     graph and the frozen app fails at import time. Walk the bundle's import
-    tables and satisfy every missing DLL that the current PATH can resolve,
-    skipping anything that lives under the Windows directory (those are OS
-    components the target machine already has).
+    tables and satisfy every missing DLL that the current environment can
+    resolve, skipping anything that lives under the Windows directory (those are
+    OS components the target machine already has).
     """
     import pefile
 
@@ -246,11 +264,8 @@ def bundle_missing_dlls(app_dir: Path) -> list[str]:
             name = entry.dll.decode()
             if name.lower() in present:
                 continue
-            found = shutil.which(name)
-            if not found:
-                continue
-            src = Path(found).resolve()
-            if src.is_relative_to(windir):
+            src = find_dll(name)
+            if src is None or src.resolve().is_relative_to(windir):
                 continue
             shutil.copy2(src, internal / name)
             present.add(name.lower())
