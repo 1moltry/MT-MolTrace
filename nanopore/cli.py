@@ -25,8 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="drop the anomaly mods from the enabled set (alias for --mods minus anomaly)")
     r.add_argument("--mods", default=None,
                    help="comma-separated mod ids to enable (lowpass,dynamic_i0,anomaly,"
-                        "refined_anomaly,plots,dataset_export,summary); dependencies are added "
-                        "automatically. Overrides the config file's enabled_mods.")
+                        "refined_anomaly,plots,waveform_export,dataset_export,summary); "
+                        "dependencies are added automatically. Overrides the config file's "
+                        "enabled_mods.")
     r.add_argument("--minimal", action="store_true", help="base pipeline only, no mods")
     r.add_argument("--all", action="store_true", help="enable every mod")
     r.add_argument("--level0", type=float, default=None, help="manual baseline (pA), skips auto estimation")

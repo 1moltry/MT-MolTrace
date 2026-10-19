@@ -8,6 +8,8 @@ Per input file:
 - <name>_scatter.png : 2x2 scatters (dwell/time vs depth, dwell/time vs Io);
   depth is split by sign (blockades go either way) on a linear axis
 - <name>_hist.png    : depth and dwell histograms
+- <name>_events.mat  : (waveform_export mod) each kept event's raw current
+  samples, start-to-end with no margin, for MATLAB
 
 Batch:
 - summary.xlsx   : one row per file (event counts, validity, anomaly log)
@@ -283,6 +285,59 @@ def write_combined_dataset(df: pd.DataFrame, path: Path) -> None:
     # utf-8-sig: Excel needs the BOM to read non-ASCII labels; MATLAB readtable
     # auto-detects it.
     df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def write_event_waveforms(
+    df: pd.DataFrame,
+    current: np.ndarray,
+    sample_rate_hz: float,
+    path: Path,
+    *,
+    label: str = "",
+    source_file: str = "",
+    units: str = "",
+) -> None:
+    """Write each kept event's raw current samples to a MATLAB .mat file.
+
+    One cell-array element per event, sliced exactly from event start to end
+    (no context margin). ``start_sample``/``n_samples`` are authoritative so
+    MATLAB never has to re-derive the boundary from the timestamps. ``df`` is
+    the kept-event feature table; sample boundaries follow the same
+    ``round(t * sr)`` rule as :func:`nanopore.features.compute_features`.
+    """
+    from scipy.io import savemat
+
+    sr = float(sample_rate_hz)
+    n = len(current)
+    evs = []
+    for k, (t1, t2) in enumerate(
+        zip(df["t1"].to_numpy(dtype=float), df["t2"].to_numpy(dtype=float))
+    ):
+        s = max(0, int(round(t1 * sr)))
+        e = min(n, int(round(t2 * sr)))
+        if e <= s:
+            continue
+        evs.append({
+            "event_id": k + 1,
+            "start_sample": s,
+            "n_samples": e - s,
+            "t1_s": float(t1),
+            "t2_s": float(t2),
+            "fs_hz": sr,
+            "current_pA": np.asarray(current[s:e], dtype=float),
+        })
+    # explicit 2-D object array: an empty table must still load as a 1x0 cell
+    # rather than a 0x0 one, so MATLAB can index events{1} safely
+    events = np.empty((1, len(evs)), dtype=object)
+    for i, ev in enumerate(evs):
+        events[0, i] = ev
+    savemat(path, {
+        "source_file": source_file,
+        "label": label,
+        "units": units,
+        "fs_hz": sr,
+        "events": events,
+    }, format="5")
 
 
 def write_summary(rows: list[dict], path: Path) -> None:

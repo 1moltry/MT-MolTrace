@@ -107,6 +107,7 @@ python -m nanopore run "pCLAMP11.2/Sample Data" -o output_pclamp
 | `<名>_overview.png` | 全程轨迹（块均值）+ 蓝色理想化事件线 + 硬异常淡色带（红=breakdown/炸膜 橙=blockage 紫=jitter 蓝=反压/人工恢复 棕=baseline_drift；baseline_step 仅在异常表，不画） |
 | `<名>_scatter.png` | 2×2 散点：dwell/时间 × ΔI、dwell/时间 × Io。**ΔI 按正负分色**（ΔI<0 蓝、ΔI≥0 红），纵轴保持线性并**保留全部事件**（含远离主群的真实电平）；toff 跨度超一个数量级时横轴转对数 |
 | `<名>_hist.png` | 深度直方图 + log10 时长直方图 |
+| `<名>_events.mat` | **每个保留事件的原始电流序列**（`waveform_export` 模块）：一个 cell 数组，每个元素含 `current_pA`（事件起点到终点的原始采样，**不含前后余量**）、`start_sample`/`n_samples`、`t1_s`/`t2_s`、`fs_hz`、`event_id`。取原始信号，即使开启 `lowpass` 也不导滤波后波形 |
 
 批次级：
 
@@ -133,6 +134,21 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 
 做特征时应排除 `t1_s`/`t2_s`（时间戳，会造成时间泄漏）与 `I0`（逐记录常数）。
 
+需要**逐事件原始电流波形**时，开启 `waveform_export` 模块（CLI `--mods waveform_export`，或 GUI 勾选「事件波形导出」），每个 `.abf` 得到同名 `<名>_events.mat`：
+
+```matlab
+S = load('output/Ala_events.mat');
+if ~isempty(S.events)
+    e = S.events{1};                     % 一个事件（struct）
+    w = e.current_pA(:);                 % 原始电流序列 [n×1]，无前后余量
+    t = e.t1_s + (0:numel(w)-1)'/e.fs_hz; % 每个采样点的时间（s）
+
+    all_events = [S.events{:}];           % 全部事件拼成 1×N struct 数组
+end
+```
+
+`start_sample`（0-based）与 `n_samples` 是权威边界，与 `_events.xlsx` 的 `t1/t2` 一致；`events` 为空的记录仍会生成可加载的空 cell。
+
 ## 功能模块（mod）
 
 管线 = **底座 + 可多选模块**。底座恒跑：读盘 → 电平估计 → 事件检测 → 特征提取 → 事件表 `<名>_events.xlsx`。其余功能都是模块，**默认全关**，按需开启（CLI `--mods/--all/--minimal`；GUI「模块（可多选）」面板勾选，并记住上次选择）。
@@ -144,6 +160,7 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 | `anomaly` | 宏异常（反压/膜抖/炸膜/漂移） | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
 | `refined_anomaly` | 细粒度分级异常（依赖 `anomaly` + `dynamic_i0`） | `refined_*` | 分级 kind |
 | `plots` | 输出三张图 | — | `_overview/_scatter/_hist.png` |
+| `waveform_export` | 每事件原始电流序列 | — | `<名>_events.mat` |
 | `dataset_export` | 合并训练表 | — | `dataset_all.csv` |
 | `summary` | 批次汇总 | — | `summary.xlsx` |
 

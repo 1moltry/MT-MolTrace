@@ -131,6 +131,7 @@ def test_run_batch_minimal_writes_only_events_table(tmp_path):
     run_batch([_SAMPLE], tmp_path, PipelineConfig(enabled_mods=()))
     names = {p.name for p in tmp_path.iterdir()}
     assert "Ala_events.xlsx" in names
+    assert "Ala_events.mat" not in names
     assert "dataset_all.csv" not in names
     assert "summary.xlsx" not in names
     assert not any(n.endswith("_overview.png") for n in names)
@@ -146,6 +147,7 @@ def test_run_batch_all_writes_every_output(tmp_path):
     assert "Ala_overview.png" in names
     assert "Ala_scatter.png" in names
     assert "Ala_hist.png" in names
+    assert "Ala_events.mat" in names
     assert "dataset_all.csv" in names
     assert "summary.xlsx" in names
 

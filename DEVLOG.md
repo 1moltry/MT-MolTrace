@@ -29,6 +29,7 @@
 **项目精简 完成**：删除从未入库的「先验增强引擎」层，仓库收敛为单一 `nanopore` 包；修复 pyabf/GUI 依赖与 CI 的隐性错配。见下方 [2026-10-09]。
 **功能模块化 完成**：底座 + 可多选模块（默认最小、GUI 记住上次选择）；抽出共享 `analyze()` 消除 GUI/CLI 重复。见下方 [2026-10-19]。
 **GUI 布局重做 完成**：左侧事件表 + 剔除事件表、中间上波形下切片、点击联动（平移不改缩放）。见下方 [2026-10-19]。
+**事件波形导出 完成**：`waveform_export` 模块把每个保留事件的原始电流序列（无余量）导出为 `<名>_events.mat`，供 MATLAB 直接读取。见下方 [2026-10-19]。
 
 ---
 
@@ -95,6 +96,23 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-19] 事件波形导出模块（waveform_export → .mat）
+
+**背景**：事件表只出标量特征，GUI 切片只是屏幕显示，MATLAB 侧拿不到每个事件的原始电流序列。
+**变更**
+- 新模块 `waveform_export`（默认关）：每个 `.abf` 出同名 `<名>_events.mat`，一个 cell 数组，每事件含 `current_pA`（起点到终点的原始采样，**无前后余量**）、`start_sample`/`n_samples`（权威边界，与 `features.py` 的 `round(t*sr)` 一致）、`t1_s`/`t2_s`、`fs_hz`、`event_id`；顶层带 `source_file`/`label`/`units`/`fs_hz`。
+- 取**原始电流**（即使开 `lowpass`）；只导保留事件；空事件表也生成可加载的 1×0 cell。
+- 接入点 `pipeline.process_file`（CLI 与 GUI 批处理共用）；GUI 复选框由 mod 注册表自动生成。
+- `scipy.io.savemat`（scipy 已是依赖），无新增依赖。
+
+**取舍**：cell-of-structs 而非 struct-of-cells——MATLAB 侧 `S.events{k}.current_pA` 直接取向量；`start_sample`/`n_samples` 显式存下，避免 MATLAB 再从浮点秒换算带来 off-by-one。
+
+**测试**：`python -m pytest tests/ -q` → **169 passed**（新增 8 例：精确切片/无余量、多事件行序、尾部夹取、退化事件跳过、空表、元信息往返、开 lowpass 仍导原始、无模块时不产 mat）。样例目录 6 文件实测产出 mat，逐事件与 `read_abf` 原始切片逐样本相等。
+
+**下一步**：文件偏大（长事件记录，Ala 31 MB / ac-Thr 138 MB）；若需要可加 `do_compression`。
 
 ---
 

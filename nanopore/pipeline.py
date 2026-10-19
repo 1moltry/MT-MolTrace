@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 
 from .analysis import (build_combined_dataset, plot_hist, plot_overview,
-                       plot_scatter, write_combined_dataset, write_events_xlsx,
-                       write_summary)
+                       plot_scatter, write_combined_dataset, write_event_waveforms,
+                       write_events_xlsx, write_summary)
 from .analyze import analyze
 from .anomaly import AnomalyResult
 from .config import PipelineConfig
@@ -54,6 +54,13 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
     stem = abf_path.stem
     write_events_xlsx(res.df, res.anom.regions if res.anom else [],
                       out_dir / f"{stem}_events.xlsx", excluded=res.df_excluded)
+
+    if "waveform_export" in mods:
+        write_event_waveforms(
+            res.df, rec.current, rec.sample_rate_hz,
+            out_dir / f"{stem}_events.mat",
+            label=label, source_file=abf_path.name, units=rec.units,
+        )
 
     if "plots" in mods:
         anom = res.anom if res.anom is not None else AnomalyResult(

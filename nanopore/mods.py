@@ -37,6 +37,7 @@ ORDER: tuple[str, ...] = (
     "anomaly",
     "refined_anomaly",
     "plots",
+    "waveform_export",
     "dataset_export",
     "summary",
 )
@@ -74,6 +75,8 @@ MODS: dict[str, ModSpec] = {m.id: m for m in (
         ),
     ),
     ModSpec("plots", "输出图", "overview / scatter / hist 三张 PNG"),
+    ModSpec("waveform_export", "事件波形导出",
+            "每个保留事件的原始电流序列 → <name>_events.mat"),
     ModSpec("dataset_export", "合并训练表",
             "所有文件的保留事件纵向拼接（dataset_all.csv）"),
     ModSpec("summary", "批次汇总", "每文件事件数/有效率/异常计数（summary.xlsx）"),
