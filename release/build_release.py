@@ -26,6 +26,7 @@ interpreter (see DEVELOPMENT.md).
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -124,10 +125,10 @@ def run(cmd: list[str], **kw) -> None:
 
 def check_requirements(py: str) -> None:
     code = ("import PyInstaller, PyQt5, pyqtgraph, scipy, pandas, numpy, "
-            "matplotlib, openpyxl, pyabf")
+            "matplotlib, openpyxl, pyabf, pefile")
     if subprocess.run([py, "-c", code], capture_output=True).returncode != 0:
         sys.exit(f"构建环境缺少依赖：{py}\n请删除 build/venv 让脚本重建，"
-                 f"或运行 pip install -e \".[dev]\" pyinstaller。")
+                 f"或运行 pip install -e \".[dev]\" pyinstaller pefile。")
 
 
 def ensure_build_python(venv: Path) -> str:
@@ -135,7 +136,11 @@ def ensure_build_python(venv: Path) -> str:
     the bundle (MKL, cupy, panel, playwright ... bloated a 2 GB build)."""
     py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     if py.exists():
-        return str(py)
+        py_s = str(py)
+        if subprocess.run([py_s, "-c", "import pefile"],
+                          capture_output=True).returncode != 0:
+            run([py_s, "-m", "pip", "install", "pefile"])
+        return py_s
     print(f"创建干净构建环境：{venv}")
     run([sys.executable, "-m", "venv", str(venv)])
     py_s = str(py)
@@ -144,7 +149,7 @@ def ensure_build_python(venv: Path) -> str:
         project = tomllib.load(fh)["project"]
     deps = (list(project["dependencies"])
             + list(project.get("optional-dependencies", {}).get("gui", []))
-            + ["pyinstaller"])
+            + ["pyinstaller", "pefile"])
     run([py_s, "-m", "pip", "install", *deps])
     return py_s
 
@@ -209,6 +214,49 @@ def freeze(py: str, icon: Path) -> None:
         args += ["--exclude-module", mod]
     args.append(ENTRY_NAME)
     run(args, cwd=STAGE)
+
+
+def bundle_missing_dlls(app_dir: Path) -> list[str]:
+    """Copy DLLs that PyInstaller could not trace.
+
+    Anaconda keeps dependencies of some stdlib extensions (``ffi.dll`` for
+    ``_ctypes``, ``libexpat.dll`` for ``pyexpat``) under ``Library/bin``, outside
+    the interpreter folder, so they are invisible to PyInstaller's dependency
+    graph and the frozen app fails at import time. Walk the bundle's import
+    tables and satisfy every missing DLL that the current PATH can resolve,
+    skipping anything that lives under the Windows directory (those are OS
+    components the target machine already has).
+    """
+    import pefile
+
+    internal = app_dir / "_internal" if (app_dir / "_internal").is_dir() else app_dir
+    windir = Path(os.environ.get("WINDIR", r"C:\Windows")).resolve()
+    present = {p.name.lower() for p in internal.rglob("*") if p.is_file()}
+    added: list[str] = []
+    queue = [p for p in internal.rglob("*") if p.suffix.lower() in (".pyd", ".dll")]
+    while queue:
+        binary = queue.pop()
+        try:
+            pe = pefile.PE(str(binary), fast_load=True)
+            pe.parse_data_directories(
+                directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]])
+        except Exception:                                    # not a PE file
+            continue
+        for entry in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
+            name = entry.dll.decode()
+            if name.lower() in present:
+                continue
+            found = shutil.which(name)
+            if not found:
+                continue
+            src = Path(found).resolve()
+            if src.is_relative_to(windir):
+                continue
+            shutil.copy2(src, internal / name)
+            present.add(name.lower())
+            added.append(name)
+            queue.append(internal / name)
+    return added
 
 
 def assemble() -> Path:
@@ -281,6 +329,8 @@ def main() -> int:
     stage_source()
     write_entry()
     freeze(py, args.icon)
+    added = bundle_missing_dlls(DIST / EXE_NAME)
+    print(f"[ok] 补齐 PyInstaller 未追踪的 DLL（{len(added)}）：{added}")
     pkg_app = assemble()
     zip_path = make_zip(pkg_app, version)
     verify_zip(zip_path)
