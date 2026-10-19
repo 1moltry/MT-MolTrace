@@ -53,14 +53,6 @@ class DetectionResult:
     level0_final: float          # baseline after the last update (drift end point)
     level0_refs: np.ndarray      # per-event baseline reference, aligned to events
 
-    @property
-    def start_times_s(self) -> np.ndarray:
-        return np.array([e.start_s for e in self.events])
-
-    @property
-    def end_times_s(self) -> np.ndarray:
-        return np.array([e.end_s for e in self.events])
-
 
 def tau_samples_for(sample_rate_hz: float, cutoff_hz: float | None) -> float:
     """Filter time constant in samples. tau = 1/(2*pi*f_c); without filter info

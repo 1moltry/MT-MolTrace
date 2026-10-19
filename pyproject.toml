@@ -11,7 +11,7 @@ authors = [
     { name = "Junjie Wen" },
 ]
 requires-python = ">=3.11"
-dependencies = ["numpy>=2.0", "pandas>=2.0", "scipy>=1.12", "matplotlib>=3.8", "openpyxl>=3.1", "xlrd>=2.0"]
+dependencies = ["numpy>=2.0", "pandas>=2.0", "scipy>=1.12", "matplotlib>=3.8", "openpyxl>=3.1", "xlrd>=2.0", "pyabf>=2.3"]
 
 [project.urls]
 Homepage = "https://github.com/1moltry/SDL-Auto-Data-process"
@@ -19,16 +19,14 @@ Repository = "https://github.com/1moltry/SDL-Auto-Data-process"
 Issues = "https://github.com/1moltry/SDL-Auto-Data-process/issues"
 
 [project.optional-dependencies]
-review = ["pyabf>=2.3", "PyQt5>=5.15", "pyqtgraph>=0.13"]
-dev = ["pytest>=8.0"]
+gui = ["PyQt5>=5.15", "pyqtgraph>=0.13"]
+dev = ["pytest>=8.0", "PyQt5>=5.15", "pyqtgraph>=0.13"]
 
 [project.scripts]
-nanopore-prior = "nanopore_prior.cli:main"
-nanopore-review = "nanopore.cli:main"
+nanopore = "nanopore.cli:main"
 
 [tool.setuptools]
 packages = ["nanopore", "nanopore.gui"]
-py-modules = ["merged_runner"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

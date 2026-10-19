@@ -44,14 +44,14 @@ def test_breakdown_at_end():
 
 
 def test_events_overlapping_anomaly_flagged():
-    from nanopore.anomaly import events_in_invalid_regions
+    from nanopore.anomaly import invalid_region_reasons
     from nanopore.anomaly import AnomalyRegion
 
     starts = np.array([0.5, 1.9, 3.5])
     ends = np.array([0.6, 2.5, 3.6])
     regions = [AnomalyRegion("blockage", 2.0, 3.0)]
-    bad = events_in_invalid_regions(starts, ends, regions)
-    assert bad.tolist() == [False, True, False]
+    reasons = invalid_region_reasons(starts, ends, regions)
+    assert [r != "" for r in reasons] == [False, True, False]
 
 
 def test_baseline_step_switching():

@@ -243,13 +243,9 @@ def invalid_region_reasons(
     regions: list[AnomalyRegion],
 ) -> list[str]:
     """Per-event exclusion reason: '' = kept, else the ``|``-joined kinds of
-    the invalid regions the event overlaps. Unlike
-    :func:`events_in_invalid_regions`, overlapping *multiple* kinds report all
-    of them so the drop is traceable. ``baseline_step`` never produces a
+    the invalid regions the event overlaps. Overlapping *multiple* kinds report
+    all of them so the drop is traceable. ``baseline_step`` never produces a
     reason (a pore-state boundary stays valid data).
-
-    Matches :func:`events_in_invalid_regions` semantics (a reason is non-empty
-    exactly when the mask would flag the event), so callers can use either.
     """
     if len(start_times_s) == 0:
         return []
@@ -262,16 +258,6 @@ def invalid_region_reasons(
             if r.kind not in reasons[i].split("|"):
                 reasons[i] = reasons[i] + "|" + r.kind if reasons[i] else r.kind
     return reasons
-
-
-def events_in_invalid_regions(
-    start_times_s: np.ndarray,
-    end_times_s: np.ndarray,
-    regions: list[AnomalyRegion],
-) -> np.ndarray:
-    """Boolean mask: True = event overlaps an invalid (artifact) region."""
-    return np.array([r != "" for r in invalid_region_reasons(start_times_s, end_times_s, regions)],
-                    dtype=bool)
 
 
 @dataclass
@@ -656,7 +642,7 @@ def merge_anomaly_results(*results: AnomalyResult) -> AnomalyResult:
     """Union several :class:`AnomalyResult`s (e.g. the macro envelope detector
     and the refined artifact detector) into one, recomputing ``valid`` on a
     common ~100 ms grid. Events that fall inside ANY contributing region are
-    removed by the caller via :func:`events_in_invalid_regions`."""
+    removed by the caller via :func:`invalid_region_reasons`."""
     regions: list[AnomalyRegion] = []
     for res in results:
         if res is not None:

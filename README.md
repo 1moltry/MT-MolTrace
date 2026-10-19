@@ -4,22 +4,16 @@
 
 全自动处理纳米孔传感 .abf 数据：事件分割、特征提取、异常检测、分析可视化——替代原有「Clampfit 手动找事件 → MATLAB 提特征 → Origin 作图」的人工流程。
 
-## 统一入口（`启动纳米孔分析.bat`）
+## 入口
 
-返回上一层，双击唯一入口 `启动纳米孔分析.bat` 即可。首次运行如果缺少组件，启动器会自动安装，然后打开统一界面。
+一套代码，两种用法，都跑同一个 `nanopore` 包：
 
-统一界面包含两部分：
+- **图形界面（推荐）**：双击 `启动界面.bat`（桌面快捷方式 `SDL纳米孔分析`）打开 PyQt5 GUI。工具栏「打开」选文件、「批量处理…」递归处理文件夹，支持多文件/文件夹 + 输出目录 + 实时进度，结果写 `summary.xlsx` / `dataset_all.csv`；主窗口看完整波形、事件表、散点、异常区间，并用 Cursor 对选定区间重跑。
+- **命令行**：`python -m nanopore run <目录>` 批处理（见下文「快速开始」）。
 
-- **「开始主分析」**：使用先验增强引擎，支持动态基线、多平台事件、异常/严格筛选、人工方向标定、负数截止时间、事件状态与波形溯源。
-- **「打开交互复核界面」**：查看完整波形、事件表、散点、异常区间，并用 Cursor 对选定区间重跑。
-
-批处理会递归搜索 ABF，单个文件失败不会中断其他文件。结果包括逐文件综合 Excel、`summary.xlsx`、`dataset_all.csv` 和 `运行清单.json`。
-
-主分析和交互复核采用不同检测思路，复核结果不会静默覆盖主结果。二者不一致时，应结合原始波形和人工标记判断。
+批处理递归搜索 ABF，单个文件失败不会中断其他文件。
 
 维护测试命令：`py -3.13 -m pytest -q`。
-
-> **当前状态**：该统一入口依赖 `nanopore_prior` 包（批处理入口为 `merged_runner.py`），而该包尚未随代码入库，因此本版该入口暂不可用。当前可运行的是下文记录的 `nanopore` 包（CLI + `启动界面.bat` 启动的 PyQt5 GUI）。
 
 ## 背景
 
@@ -30,11 +24,11 @@
 需要 Python ≥ 3.11（开发环境 3.13）。
 
 ```bash
-# 可编辑安装（含开发依赖 pytest）
+# 可编辑安装（含 GUI 依赖与 pytest）
 pip install -e ".[dev]"
 ```
 
-依赖由 `pyproject.toml` 声明：numpy / scipy / pandas / matplotlib / openpyxl / pyabf / PyQt5 / pyqtgraph。
+依赖由 `pyproject.toml` 声明：运行核心 = numpy / scipy / pandas / matplotlib / openpyxl / pyabf（读取 ABF）；GUI 另需 PyQt5 / pyqtgraph（`[gui]` 或 `[dev]` extra）。
 
 ## 数据准备
 
@@ -194,8 +188,6 @@ nanopore/          Python 包
     ├── eventtable.py   事件结果表
     ├── anomalyview.py  异常/剔除面板
     └── batchdialog.py  批量处理对话框（多文件/文件夹 + 输出目录 + 进度）
-merged_runner.py   统一入口批处理（依赖 nanopore_prior，当前尚未入库）
-nanopore_launcher.pyw  统一入口 GUI 启动器（依赖 nanopore_prior，当前尚未入库）
 tests/             合成信号回归测试
 .github/           CI 工作流 + PR / issue 模板
 pyproject.toml     依赖声明、打包与 console 入口（`nanopore`）
@@ -203,7 +195,6 @@ CONTRIBUTING.md    贡献指南：环境 / 分支 / 提交规范 / PR 检查清�
 data/README.md     数据获取方式与目录约定
 启动界面.bat        双击启动 GUI（桌面快捷方式 `SDL纳米孔分析` 指向它）
 启动界面-调试.bat   同款启动但保留控制台，用于排查启动报错
-启动纳米孔分析.bat  统一入口启动器（依赖 nanopore_prior，当前尚未入库）
 ```
 
 以下为**本地目录，不入库**（见 `.gitignore`）：`abf数据案例/`（实验数据，见 `data/README.md`）、`pCLAMP11.2/`（商业软件，对照查看器）、`_tmp/`（Clampfit 帮助提取文本，本地查阅）、`output/`（默认输出目录）。

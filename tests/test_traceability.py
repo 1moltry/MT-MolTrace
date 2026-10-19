@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from nanopore.anomaly import AnomalyRegion, events_in_invalid_regions, invalid_region_reasons
+from nanopore.anomaly import AnomalyRegion, invalid_region_reasons
 from nanopore.config import PipelineConfig
 
 
@@ -38,15 +38,6 @@ def test_reasons_multiple_overlap_joined():
 
 def test_reasons_empty_input():
     assert invalid_region_reasons(np.array([]), np.array([]), _regions()) == []
-
-
-def test_mask_matches_reasons():
-    starts = np.array([0.5, 20.5, 50.0])
-    ends = np.array([1.0, 20.8, 51.0])
-    mask = events_in_invalid_regions(starts, ends, _regions())
-    reasons = invalid_region_reasons(starts, ends, _regions())
-    assert list(mask) == [r != "" for r in reasons]
-    assert list(mask) == [True, False, False]
 
 
 def test_config_min_toff_present_and_dead_fields_removed():

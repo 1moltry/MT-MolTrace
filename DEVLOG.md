@@ -23,8 +23,10 @@
 **G1.9 桌面快捷入口 完成**：双击桌面 `SDL纳米孔分析` 即开 GUI，无需命令行。见下方 [2026-09-13]。
 **G1.10 MATLAB 训练导出 + 散点图极值修复 完成**：批处理产出合并表 `dataset_all.csv`（MATLAB 合法列名）；散点图 toff 转对数横轴、ΔI 改线性轴并按正负分色（symlog 实测有害，已弃）。见下方 [2026-09-13]。
 **v3 规划已就绪**：全项目审查（正确性 / 健壮性 / 冗余 / 算法能力）与 MATLAB 接线硬阻塞已归纳为下方《v3 规划》章节，作为下一大版本的输入。见下方 [2026-09-13]。
+**计划（未实施）：驻留包络去抖检测（burst mode）**：针对「毛刺型阻孔」与「站孔上下跳跃」两类被切碎的事件，拟新增默认关闭的 `event_mode="burst"`，把「分割」与「电平量化」解耦，并在 GUI 直接可选可调。完整实施规格见 `PLAN_burst_detection.md`。
 **工程化 完成**：纳入 git 版本控制并搭建 GitHub 协作流程（CI / 模板 / Dependabot / 打包）。见下方 [2026-09-20]。
 **文档与协作 完成**：仓库更名 `SDL-Auto-Data-process`；`CONTRIBUTING.md` 回归贡献者指南并载明共同开发者与资助方，协作机制移入本文件；`LICENSE` / `pyproject.toml` 署名同步。见下方 [2026-09-25]。
+**项目精简 完成**：删除从未入库的「先验增强引擎」层，仓库收敛为单一 `nanopore` 包；修复 pyabf/GUI 依赖与 CI 的隐性错配。见下方 [2026-10-09]。
 
 ---
 
@@ -91,6 +93,42 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-19] 工作区清理 + 模块化架构规划（burst 检测同为待办）
+
+**变更（清理，仅本机忽略项与死符号）**
+- 删除生成物：`build/`（含整包旧副本 `build/lib/nanopore/`，会让后续读者/agent 读到旧代码）、`nanopore_merged_lab.egg-info/`、`output/`、`__pycache__/`、`.pytest_cache/`。
+- 删除调试草稿：`_preview_*.png`（8 张）、`_gen_preview.py`；同步移除 `.gitignore` 中这两条已失效的忽略项。
+- 删除生产死符号：`detect.DetectionResult.start_times_s` / `end_times_s`（全仓库无人调用）、`anomaly.events_in_invalid_regions`（仅测试调用，生产走 `invalid_region_reasons`）；改写 `tests/test_anomaly.py` 该用例改测 `invalid_region_reasons`，删除 `tests/test_traceability.py` 中仅校验两函数等价的 `test_mask_matches_reasons`，修正两处 docstring 交叉引用。
+- 保留（不入库的资料/草稿）：`goal.md`、`8a558a…png`、`Feature extraction code.m`、`人工常规数据处理方法.docx`。
+
+**测试**：`python -m pytest -q` → **125 passed**（本机 pytest 在 anaconda `python`，`py -3.13` 无 pytest）。
+
+**下一步（规划，未实施）**
+- 模块化：把「阶段／产物」类功能（低通、动态 I0、宏/细粒度异常、输出图、合并表、批次汇总）做成**默认最小、可多选、记住上次选择**的 mod；检测变体（`polarity`／`event_mode`／毛刺门控）留参数面板。规格见 `PLAN_mods_architecture.md`。
+- 驻留包络去抖检测（毛刺/多电平）：规格见 `PLAN_burst_detection.md`。
+
+---
+
+## [2026-10-09] 项目精简 — 删除未入库的先验层，收敛为单一 nanopore 包
+
+**变更**
+- **删除从未入库的「先验增强引擎」层**：`merged_runner.py` / `nanopore_launcher.pyw` / `启动纳米孔分析.bat`。三者都 `import nanopore_prior`，而该包自 `37b0356`（Add files via upload）起就未随代码入库，故 import 即 `ModuleNotFoundError`，且从无测试覆盖。功能上其 Tk 启动器的批处理（递归搜集 ABF、写 `summary.xlsx`/`dataset_all.csv`）已被 `nanopore` PyQt5 GUI 的「批量处理」对话框（`gui/batchdialog.py`）覆盖。
+- **pyproject.toml**：删 `nanopore-prior` console 入口（指向不存在的 `nanopore_prior.cli`）与 `py-modules = ["merged_runner"]`；`nanopore-review` 更名 `nanopore`（对齐 CLAUDE.md/README 使用的 `nanopore run`）。
+- **修复依赖声明与 CI 的隐性错配**：`pyabf`（`io.py` 读 ABF2 的入口）从 `[review]` extra 移入核心 `dependencies`；`PyQt5`/`pyqtgraph` 放入 `[dev]` 与新增 `[gui]` extra。此前 CI 的 `pip install -e ".[dev]"` 只装 pytest，**GUI 测试全部 `importorskip` 静默跳过**，而 CI 仍在装 Qt 系统库并设 `QT_QPA_PLATFORM=offscreen`——绿但没测到 GUI；README 的 `.[dev]` 也跑不了 GUI 与真实数据。
+- **删除重复依赖清单**：`requirements.txt` / `requirements-dev.txt`（唯一消费者是被删的 bat，内容与 pyproject 重复）。
+- **README**：删「统一入口」死章节（原指向必然报错的 `启动纳米孔分析.bat`），收敛为「入口」节（GUI 双击 + CLI）；仓库结构清单中的死文件一并移除。
+- **保留的功能意图（信息不丢）**：先验层 Tk 界面描述了 `nanopore` 目前**没有**的四项功能——局部分析起止时间（随批处理生效的 ROI）、人工标定表、事件种类数期望、严格筛选（目标电流变化/SD）。若仍需要，后续在 `nanopore` 侧补 `--start/--end` 与 GUI 批处理 ROI。
+
+**测试**
+- `pytest` 126 passed（本地样例数据在）。删除均为死代码/死引用，未动 `nanopore/` 算法。
+- `pip wheel . --no-deps` 构建通过（不再引用 `nanopore_prior` / `merged_runner`）。
+
+**下一步**
+- 若确认先验层四项功能仍需要，在 `nanopore` 侧实现（CLI `--start/--end` + GUI 批处理 ROI）。
+- 恢复 v3 规划主线：C1（skew/kurt 有偏校正）→ C2/C3（GUI 真 bug）→ R1（内存）。
 
 ---
 
