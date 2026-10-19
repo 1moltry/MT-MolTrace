@@ -13,7 +13,6 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 class Bus(QObject):
     event_selected = pyqtSignal(int)          # row index into the current events DataFrame
-    region_selected = pyqtSignal(float, float)  # anomaly region [start_s, end_s] — focus waveform
     file_loaded = pyqtSignal(str)             # absolute path of the loaded .abf
     detection_finished = pyqtSignal()         # all views should refresh their data
     roi_rerun = pyqtSignal(float, float)      # request ROI analysis on [start_s, end_s]

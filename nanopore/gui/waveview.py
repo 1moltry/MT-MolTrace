@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget)
 
@@ -93,6 +93,8 @@ class WaveView(QWidget):
 
         self._anom_regions: list[pg.LinearRegionItem] = []
         self._focus_region: pg.LinearRegionItem | None = None
+        self._focus_line: pg.InfiniteLine | None = None
+        self._zoom_on_select = False   # toolbar toggle: pan (False) vs zoom (True)
         # ROI cursor: draggable search region + its result square-pulse overlay
         self._roi_item: pg.LinearRegionItem | None = None
         self._roi_events: pg.PlotDataItem | None = None
@@ -115,6 +117,7 @@ class WaveView(QWidget):
         self.btn_run_roi.clicked.connect(self._run_roi)
         self.btn_clear_roi.clicked.connect(self.clear_roi)
         bus.roi_finished.connect(self._on_roi_finished)
+        self._install_click()
 
     # ---- cursor (ROI) -----------------------------------------------------
     def toggle_roi(self) -> None:
@@ -208,9 +211,7 @@ class WaveView(QWidget):
         for item in self._anom_regions:
             self.plot.removeItem(item)
         self._anom_regions = []
-        if self._focus_region is not None:
-            self.plot.removeItem(self._focus_region)
-            self._focus_region = None
+        self._clear_focus()
         self.events_item.setData([], [])
 
     def _add_anomalies(self, anom) -> None:
@@ -291,42 +292,77 @@ class WaveView(QWidget):
         self.plot.setRange(xRange=(x0, x1), yRange=(y0, y1), padding=0.02)
 
     # ---- selection --------------------------------------------------------
-    def focus_region(self, start_s: float, end_s: float) -> None:
-        """Zoom to an anomaly region span (from the anomaly panel)."""
+    def _clear_focus(self) -> None:
+        for it in (self._focus_region, self._focus_line):
+            if it is not None:
+                self.plot.removeItem(it)
+        self._focus_region = self._focus_line = None
+
+    def set_zoom_on_select(self, on: bool) -> None:
+        self._zoom_on_select = bool(on)
+
+    def focus_event(self, t1: float, t2: float, zoom: bool | None = None) -> None:
+        """Highlight [t1, t2] and **pan** the main view onto it.
+
+        zoom=False (default; also the toolbar default): keep the user's current
+        zoom level — only pan so the event is visible ("jump, don't zoom").
+        zoom=True: also auto-zoom x/y to fit the event.
+        """
         if self._raw is None:
             return
-        pad = 0.03 * (end_s - start_s) or 0.2
-        if self._focus_region is not None:
-            self.plot.removeItem(self._focus_region)
-        self._focus_region = pg.LinearRegionItem([start_s, end_s], movable=False)
-        self._focus_region.setBrush(pg.mkBrush(230, 51, 51, 31))
-        self.plot.addItem(self._focus_region)
-        sr = self._sr
-        i0 = max(0, int((start_s - pad) * sr))
-        i1 = min(len(self._raw), int((end_s + pad) * sr) + 1)
-        seg = self._raw[i0:i1] if i1 > i0 else self._raw[:1]
-        self.plot.setXRange(start_s - pad, end_s + pad, padding=0.03)
-        self.plot.setYRange(float(np.nanmin(seg)), float(np.nanmax(seg)), padding=0.08)
-
-    def focus(self, idx: int) -> None:
-        if self._df is None or idx < 0 or idx >= len(self._df):
-            return
-        row = self._df.iloc[idx]
-        t1, t2 = float(row["t1"]), float(row["t2"])
-        span = max(t2 - t1, 1.0)
-        pad = max(0.03, 0.5 * span)
-
-        if self._focus_region is not None:
-            self.plot.removeItem(self._focus_region)
+        if zoom is None:
+            zoom = self._zoom_on_select
+        self._clear_focus()
         self._focus_region = pg.LinearRegionItem([t1, t2], movable=False)
-        self._focus_region.setBrush(pg.mkBrush(31, 79, 181, 38))
+        self._focus_region.setBrush(pg.mkBrush(31, 79, 181, 60))
+        self._focus_region.setZValue(-5)
         self.plot.addItem(self._focus_region)
 
-        sr, n = self._sr, len(self._raw)
-        i0 = max(0, int((t1 - pad) * sr))
-        i1 = min(n, int((t2 + pad) * sr) + 1)
-        seg = self._raw[i0:i1] if i1 > i0 else self._raw[:1]
-        y0, y1v = float(np.nanmin(seg)), float(np.nanmax(seg))
+        (x0, x1), _ = self.plot.getViewBox().viewRange()
+        xspan = x1 - x0
+        if xspan <= 0:
+            xspan = max(t2 - t1, 1e-3)
+        # short event → centre it; long event → align to its start (the edge
+        # that carries the transition is what you want to see)
+        xc = 0.5 * (t1 + t2) if (t2 - t1) <= xspan else t1
 
-        self.plot.setXRange(t1 - pad, t2 + pad, padding=0.03)
-        self.plot.setYRange(y0, y1v, padding=0.08)
+        if zoom:
+            span = max(t2 - t1, 1e-4)
+            pad = max(0.5 * span, 1e-3)
+            sr, n = self._sr, len(self._raw)
+            i0 = max(0, int((t1 - pad) * sr))
+            i1 = min(n, int((t2 + pad) * sr) + 1)
+            seg = self._raw[i0:i1] if i1 > i0 else self._raw[:1]
+            self.plot.setYRange(float(np.nanmin(seg)), float(np.nanmax(seg)), padding=0.08)
+            xspan = max(t2 - t1, 1e-4) * 2.0
+
+        self.plot.setXRange(xc - xspan / 2.0, xc + xspan / 2.0, padding=0)
+
+        # a sub-pixel-wide event is invisible at full view: add a vertical marker
+        self._focus_line = pg.InfiniteLine(pos=xc, angle=90,
+                                           pen=pg.mkPen((31, 79, 181), width=1.4))
+        self._focus_line.setZValue(-4)
+        self.plot.addItem(self._focus_line)
+
+    # ---- click-to-select --------------------------------------------------
+    def _install_click(self) -> None:
+        """Left-click on the wave → select the nearest event (bus signal)."""
+        vb = self.plot.getViewBox()
+        orig = vb.mouseClickEvent
+
+        def handler(ev):
+            if ev.button() == Qt.LeftButton:
+                x = vb.mapSceneToView(ev.scenePos()).x()
+                self._click_select(float(x))
+            return orig(ev)
+
+        vb.mouseClickEvent = handler
+
+    def _click_select(self, x_s: float) -> None:
+        if self._df is None or len(self._df) == 0:
+            return
+        starts = self._df["t1"].to_numpy(dtype=float)
+        ends = self._df["t2"].to_numpy(dtype=float)
+        # distance to the event *interval* (0 when the click is inside an event)
+        dist = np.maximum(np.maximum(starts - x_s, x_s - ends), 0.0)
+        bus.event_selected.emit(int(np.argmin(dist)))
