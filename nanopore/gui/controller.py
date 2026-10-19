@@ -72,6 +72,10 @@ class Controller(QObject):
         self.det = None
         self.cfg: PipelineConfig = PipelineConfig()
         self._worker: AnalysisWorker | None = None
+        self._workers: list[AnalysisWorker] = []   # keep refs until finished
+        self._gen = 0                              # stale-result guard
+        self._running = False
+        self._pending = False                      # rerun requested mid-run
         self._roi_worker: RoiWorker | None = None
         self.roi_df = None
         self.roi_span = None
@@ -79,14 +83,21 @@ class Controller(QObject):
     def load(self, path: str | Path, cfg: PipelineConfig | None = None) -> None:
         if cfg is not None:
             self.cfg = cfg
+        self._gen += 1           # invalidate any in-flight result for the old file
+        self._pending = False
         self._start(path)
 
     def set_config(self, cfg: PipelineConfig) -> None:
         self.cfg = cfg
 
     def rerun(self) -> None:
-        if self.rec is not None:
-            self._start(self.rec.path)
+        """Re-analyse the current file; requests during a run coalesce into one."""
+        if self.rec is None:
+            return
+        if self._running:
+            self._pending = True
+            return
+        self._start(self.rec.path)
 
     def rerun_roi(self, start_s: float, end_s: float) -> None:
         """Analyse a user-selected region independently (Cursor semantics)."""
@@ -107,13 +118,35 @@ class Controller(QObject):
         bus.roi_finished.emit(df, span)
 
     def _start(self, path: str | Path) -> None:
-        self._worker = AnalysisWorker(path, self.cfg)
-        self._worker.done.connect(self._on_done)
-        self._worker.failed.connect(self._on_failed)
+        self._gen += 1
+        gen = self._gen
+        self._running = True
+        worker = AnalysisWorker(path, self.cfg)
+        self._worker = worker
+        self._workers.append(worker)
+        worker.done.connect(
+            lambda rec, lv, df, dx, ad, g=gen: self._on_done(rec, lv, df, dx, ad, g))
+        worker.failed.connect(lambda msg, g=gen: self._on_failed(msg, g))
+        worker.finished.connect(lambda w=worker: self._release(w))
         bus.status.emit(f"分析中: {Path(path).name} …")
-        self._worker.start()
+        worker.start()
 
-    def _on_done(self, rec, lv, df, df_excluded, anom_det) -> None:
+    def _release(self, worker) -> None:
+        if worker in self._workers:
+            self._workers.remove(worker)
+
+    def _after_run(self, gen: int) -> None:
+        if gen != self._gen:
+            return                       # a newer run owns the state
+        self._running = False
+        if self._pending:
+            self._pending = False
+            if self.rec is not None:
+                self._start(self.rec.path)
+
+    def _on_done(self, rec, lv, df, df_excluded, anom_det, gen: int) -> None:
+        if gen != self._gen:
+            return                       # superseded by a newer run
         self.rec, self.lv, self.df = rec, lv, df
         self.df_excluded = df_excluded
         self.anom, self.det = anom_det
@@ -122,9 +155,12 @@ class Controller(QObject):
         bus.status.emit(f"完成[{mode}]: {rec.path.name}\t保留 {len(df)} / 剔除 {n_removed}（明细见异常面板）")
         bus.file_loaded.emit(str(rec.path))
         bus.detection_finished.emit()
+        self._after_run(gen)
 
-    def _on_failed(self, msg: str) -> None:
-        bus.status.emit(f"错误: {msg}")
+    def _on_failed(self, msg: str, gen: int) -> None:
+        if gen == self._gen:
+            bus.status.emit(f"错误: {msg}")
+        self._after_run(gen)
 
 
 controller = Controller()

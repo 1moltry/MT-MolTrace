@@ -14,7 +14,7 @@ and syncs the other panels.
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (QAction, QDockWidget, QFileDialog, QMainWindow,
                              QSplitter, QToolBar)
 
@@ -48,6 +48,14 @@ class MainWindow(QMainWindow):
         self.params = ParamPanel()
         self.scatter = ScatterView()
 
+        # option edits apply automatically: debounce briefly, then re-analyse
+        self._auto = QTimer(self)
+        self._auto.setSingleShot(True)
+        self._auto.setInterval(600)
+        self._auto.timeout.connect(self._auto_rerun)
+        self.params.changed.connect(self._schedule_auto_rerun)
+        self.params.run.clicked.connect(lambda: self._auto.stop())
+
         self.addDockWidget(Qt.LeftDockWidgetArea, self._dock("事件", self.event))
         self.addDockWidget(Qt.LeftDockWidgetArea, self._dock("异常事件（剔除）", self.excluded))
         self.addDockWidget(Qt.RightDockWidgetArea, self._dock("参数", self.params))
@@ -68,6 +76,20 @@ class MainWindow(QMainWindow):
         dock.setWidget(widget)
         return dock
 
+    # ---- live apply ------------------------------------------------------
+    def _schedule_auto_rerun(self) -> None:
+        if ctrl_mod.controller.rec is None:
+            return
+        self._auto.start()             # restart the debounce window
+
+    def _auto_rerun(self) -> None:
+        c = ctrl_mod.controller
+        if c.rec is None:
+            return
+        c.set_config(self.params.build_config())
+        bus.status.emit("参数已更改，自动重跑 …")
+        c.rerun()
+
     def _build_toolbar(self) -> None:
         bar = QToolBar("main")
         bar.setMovable(False)
@@ -79,6 +101,7 @@ class MainWindow(QMainWindow):
 
         act_run = QAction("重跑", self)
         act_run.triggered.connect(self.params._run)
+        act_run.triggered.connect(lambda: self._auto.stop())
         bar.addAction(act_run)
 
         act_fit = QAction("全览", self)

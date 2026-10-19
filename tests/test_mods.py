@@ -214,3 +214,13 @@ def test_gui_remembers_detection_mode_and_params(monkeypatch):
     restored = pp.ParamPanel()          # same (monkeypatched) QSettings
     assert restored.event_mode.currentData() == "burst"
     assert restored.b_gap.value() == 123.0
+
+
+def test_gui_emits_changed_on_option_edit(monkeypatch):
+    panel = _panel(monkeypatch)
+    got = []
+    panel.changed.connect(lambda: got.append(1))
+    panel.b_gap.setValue(77.0)                    # spin box edit
+    panel.event_mode.setCurrentIndex(panel.event_mode.findData("burst"))
+    panel.mod_boxes["plots"].setChecked(True)     # module toggle
+    assert len(got) >= 3

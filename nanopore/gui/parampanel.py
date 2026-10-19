@@ -18,7 +18,7 @@ import json
 from dataclasses import asdict, fields
 from pathlib import Path
 
-from PyQt5.QtCore import QSettings
+from PyQt5.QtCore import QSettings, pyqtSignal
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
                              QFormLayout, QGroupBox, QHBoxLayout, QLineEdit,
                              QPushButton, QVBoxLayout, QWidget)
@@ -48,6 +48,8 @@ def _tip(widget, text: str):
 
 
 class ParamPanel(QWidget):
+    changed = pyqtSignal()      # any option edit → main window schedules a rerun
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         # --- base parameters (always shown) ---
@@ -260,6 +262,24 @@ class ParamPanel(QWidget):
         self.event_mode.currentIndexChanged.connect(self._sync_mode)
         self._update_visibility()
         self._sync_mode()
+
+        # any option edit asks the main window for a debounced auto-rerun
+        for w in (self.ignore, self.ignore_event, self.contrib, self.plateau,
+                  self.pre, self.min_toff, self.lowpass, self.dr,
+                  self.b_enter, self.b_exit, self.b_gap, self.b_block,
+                  self.b_occ, self.b_depth, self.drift_frac, self.drift_iqr,
+                  self.l0, self.l1):
+            w.valueChanged.connect(self._emit_changed)
+        for w in (self.l0_en, self.l1_en, self.drift_en, self.b_cross):
+            w.stateChanged.connect(self._emit_changed)
+        for w in (self.polarity, self.event_mode):
+            w.currentIndexChanged.connect(self._emit_changed)
+        self.lab.textChanged.connect(self._emit_changed)
+        for cb in self.mod_boxes.values():
+            cb.stateChanged.connect(self._emit_changed)
+
+    def _emit_changed(self, *args) -> None:
+        self.changed.emit()
 
     # ---------------- mod helpers ----------------
     def _checked_raw(self) -> list[str]:
