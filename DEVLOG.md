@@ -105,10 +105,12 @@
 **目标**：把软件交给别人用——解压双击即开、不装 Python、不含任何内部文件。
 **变更**
 - 新增 `release/build_release.py`：`git archive HEAD` 取干净源码树（`.gitattributes` 的 `export-ignore` 剔除 tests/DEVLOG/DEVELOPMENT/规划稿/.github/启动 bat/data/release）→ PyInstaller `--windowed --onedir` 冻结 GUI（hidden imports: pyabf、scipy.io、openpyxl、matplotlib.pyplot+Agg；排除 tkinter 与未用到的 Qt 模块）→ 附 README/LICENSE → 清单断言 → `release/SDL纳米孔分析_v0.1.0_win64.zip`。要求工作区已提交（`--dirty` 仅调试）。
+- 构建改用**独立干净 venv**（`build/venv`，缺失时自动创建）：直接用 Anaconda 基础环境会把 MKL、cupy、panel、playwright 等带进包，体积 1.9 GB → **250 MB**。
+- 新增**构建后 DLL 补齐**：扫描包内 `.pyd/.dll` 的导入表，把 PyInstaller 追踪不到的 Anaconda 库（`ffi.dll`、`libexpat.dll`、`sqlite3.dll` 等 6 个）一并收进 `_internal`，否则冻结版启动即报 `_ctypes` / `expat` 导入失败。
 - README 重写为**用户向**（快速上手 / 界面导览 / 如何导出 / 输出文件 / 常用设置 / MATLAB 对接 / FAQ）；开发内容迁入新建 `DEVELOPMENT.md`（安装、CLI、模块表、检测模式、参数表、电压与漂移判据、结构、测试、打包）。
 - `.gitattributes` 增 `export-ignore`；`.gitignore` 增 `/release/*.zip`；`pyproject.toml` 删未引用的 `xlrd`。
 
-**测试**：`python -m pytest tests/ -q` → 169 passed；构建脚本产出 zip，清单核对无 tests/DEVLOG/PLAN/.github/CLAUDE.md/data。
+**测试**：`python -m pytest tests/ -q` → 169 passed；构建脚本产出 zip（250 MB 解压 / 106 MB 压缩），清单核对无 tests/DEVLOG/PLAN/.github/CLAUDE.md/data；冻结版临时命令行程序实跑 Ala.abf → 37 事件，`_events.xlsx`、三张 PNG、`_events.mat`、`dataset_all.csv`、`summary.xlsx` 全部产出；GUI exe 启动并显示主窗口。
 
 **下一步**：图形观感与 exe 首次启动需用户人工过目（本模型无视觉确认能力）。
 
