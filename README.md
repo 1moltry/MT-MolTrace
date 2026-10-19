@@ -59,6 +59,10 @@ python -m nanopore run <目录> --save-config params.json
 python -m nanopore run <目录> --minimal
 python -m nanopore run <目录> --all
 python -m nanopore run <目录> --mods anomaly,plots
+
+# 驻留包络去抖（毛刺/多电平）；跨基线多电平再开 --burst-cross-baseline
+python -m nanopore run <目录> --event-mode burst
+python -m nanopore run <目录> --event-mode burst --burst-cross-baseline
 ```
 
 ## 图形界面（GUI，v2）
@@ -147,6 +151,24 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 
 > **行为变更**：默认「只底座」不同于旧版（旧版默认全开异常/图/合并表/汇总）。需要旧行为用 `--all`。
 
+## 检测模式：电平法 / 驻留包络去抖（burst）
+
+`event_mode` 决定底座**怎么分割事件**，默认 `level`（与旧版一致）。
+
+| 模式 | 做法 | 适用 |
+|------|------|------|
+| `level` | 逐样本最近电平 → 游程 → 同电平桥接 | 常规清晰脉冲；慢孔态切换（Ala/Asp/Gln） |
+| `burst` | 阻孔指示器 + 去抖（填空隙 / 丢短块） | 事件体内大量毛刺回落或越孔；电流在开孔上下跳跃、多电平 |
+
+burst 参数（仅该模式生效）：
+
+- `burst_min_gap_ms`（默认 30）：回到开孔短于此值**不切断**事件——**主调钮**。调大更不易切碎，但可能并掉相邻真事件。
+- `burst_min_block_ms`（默认 2）：短于此的阻孔碎片丢弃（滤孤立尖峰）。
+- `burst_enter_frac` / `burst_exit_frac`（默认 0.30 / 0.20）：进入阻孔阈值 / 事件电平取样阈值（×电平步长）。
+- `burst_cross_baseline`（默认关）：把开孔**两侧**的偏离都算作同一事件（多电平 / 上下穿越）。
+
+burst 用动态 I0(t) 作开孔参考，以吸收漂移；但它**假设开孔电平稳定**。Ala/Asp/Gln 这类**慢速孔态切换**（110↔180 pA、分钟级驻留）会把另一态读成长阻孔，请继续用电平法。
+
 ## 参数说明
 
 | 参数 | 含义 | 默认 |
@@ -162,6 +184,8 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 | 短事件判定（brief） | < 4τ（滤波时间常数），State 列标 B | 自动 |
 | `pre_event_ms` | 特征提取的开孔电流窗口（与特征表规范一致） | 25 ms |
 | `min_toff_ms` | **最短事件时长（仅导出）**：已检出事件中 dwell ≤ 此值的进剔除表（`toff<min`） | 10 ms |
+| `ignore_event_duration_ms` | **事件合并容差（仅电平法）**：同电平事件之间、回到开孔的间隙短于此值则合并 | 50 ms |
+| `event_mode` / `burst_*` | 检测模式与 burst 参数，见「检测模式」一节 | level |
 | `hold_voltage_mV` | 电压 protocol 的保持电平；不给则取电压轨迹中位数 | 自动 |
 | `refined_drift_enabled` | **慢漂移/不稳定区间检测**（新 kind `baseline_drift`）：缓慢、**不可逆**、且伴随高散布的开孔电平位移（如 TRP 尾部基线抬升 + 炸膜）。需位移**且**不稳定两个键同时满足——稳定的孔态阶跃、可恢复的瞬态、以及"位移但仍在出正常事件"的良性漂移都不会误报 | 开 |
 | `refined_drift_min_frac` | 位移键：块中值偏离记录头锚点 ≥ 此比例 ×\|锚点\| | 0.05 |

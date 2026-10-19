@@ -35,6 +35,21 @@ def build_parser() -> argparse.ArgumentParser:
                    help="event search direction (default auto from the level histogram); "
                         "'both' enables multi-level detection on either side of the baseline "
                         "(needed for peptides like ARNKRS whose blockades go both ways)")
+    r.add_argument("--event-mode", choices=("level", "burst"), default=None,
+                   help="detection variant: 'level' = threshold/level runs (default); "
+                        "'burst' = dwell-envelope debounce (merges glitches and open-pore "
+                        "hopping into one event)")
+    r.add_argument("--burst-enter-frac", type=float, default=None,
+                   help="burst: |I-I0| > this x level-step enters a blockade (default 0.30)")
+    r.add_argument("--burst-exit-frac", type=float, default=None,
+                   help="burst: amplitude read from samples beyond this x step (default 0.20)")
+    r.add_argument("--burst-min-gap-ms", type=float, default=None,
+                   help="burst: returns to open shorter than this do NOT split (default 30 ms)")
+    r.add_argument("--burst-min-block-ms", type=float, default=None,
+                   help="burst: blocked fragments shorter than this are dropped (default 2 ms)")
+    r.add_argument("--burst-cross-baseline", action="store_true",
+                   help="burst: departures on EITHER side of the open pore count as one "
+                        "event (multi-level / baseline-crossing signals)")
     r.add_argument("--save-config", default=None, help="write the effective config to this JSON path and exit")
 
     g = sub.add_parser("gui", help="launch the interactive desktop GUI")
@@ -70,6 +85,16 @@ def main(argv: list[str] | None = None) -> int:
         cfg.level1 = args.level1
     if args.polarity != "auto":
         cfg.polarity = {"up": 1, "down": -1, "both": 0}[args.polarity]
+    if args.event_mode is not None:
+        cfg.event_mode = args.event_mode
+    for field, value in (("burst_enter_frac", args.burst_enter_frac),
+                         ("burst_exit_frac", args.burst_exit_frac),
+                         ("burst_min_gap_ms", args.burst_min_gap_ms),
+                         ("burst_min_block_ms", args.burst_min_block_ms)):
+        if value is not None:
+            setattr(cfg, field, value)
+    if args.burst_cross_baseline:
+        cfg.burst_cross_baseline = True
     if args.save_config:
         cfg.save(args.save_config)
         print(f"config saved: {args.save_config}")

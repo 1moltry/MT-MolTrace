@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 from .baseline import estimate_levels
-from .detect import detect_events
+from .detect import detect
 from .features import compute_features
 
 
@@ -58,21 +58,7 @@ def analyze_roi(
 
         filtered = lowpass(seg, sr, cutoff)
 
-    det = detect_events(
-        filtered,
-        sr,
-        lv.level0,
-        lv.level1,
-        ignore_duration_ms=cfg.ignore_duration_ms,
-        ignore_event_duration_ms=cfg.ignore_event_duration_ms,
-        level_contribution=cfg.level_contribution,
-        update_levels=cfg.update_levels,
-        polarity=lv.polarity,
-        cutoff_hz=cutoff,
-        pre_event_ms=cfg.pre_event_ms,
-        dwell_min_frac=cfg.dwell_min_frac,
-        plateau_min_frac=cfg.event_plateau_min_frac,
-    )
+    det = detect(filtered, sr, lv, cfg, cutoff_hz=cutoff)
     df = compute_features(
         det,
         filtered,

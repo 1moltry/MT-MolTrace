@@ -98,6 +98,23 @@
 
 ---
 
+## [2026-10-19] burst 检测模式（驻留包络去抖）+ ignore 参数上提
+
+**变更**
+- `detect.py` 新增 `detect_events_burst`：阻孔指示器（|I−I0| > enter×step）→ 填空隙（< min_gap）→ 丢短块（< min_block）→ 每段一个事件；`cross_baseline` 让开孔两侧的偏离都算同一事件（多电平 / 上下穿越）。
+- 新增 `detect(current, sr, lv, cfg, cutoff_hz, i0_profile)` 统一分派；`analyze` 与 `roi` 改走它。`event_mode="level"` 与旧 `detect_events` **逐字段一致**（有回归测试）。
+- `config.py`：`event_mode` + `burst_enter_frac / burst_exit_frac / burst_min_gap_ms / burst_min_block_ms` + `burst_cross_baseline`，默认 `level`、burst 默认关。
+- burst 用动态 I0(t) 作开孔参考（抗漂移）；`dynamic_i0` 模块语义不变（仅该模块开启时特征才用 I0）。
+- CLI：`--event-mode`、`--burst-*`、`--burst-cross-baseline`。
+- GUI：参数面板新增「检测模式」下拉 + 「驻留包络去抖」参数组（随模式显隐）；把此前隐藏的 `ignore_event_duration_ms` 上提为「事件合并容差 (ms)」，写清它与尖峰抑制的区别。
+- `PLAN_burst_detection.md` 标为已实施。
+
+**测试**：`python -m pytest -q` → **157 passed**（新增 `tests/test_detect_burst.py` 10 例：毛刺回落、越孔、长缺口切分、上下穿越、防过并、尖峰地板、边界、level 零回归、分派）。
+
+**边界（重要）**：burst 假设**开孔电平稳定**。Ala（110↔180 慢孔态切换）实测 burst 78 vs level 37——动态 I0 设计上只跟「安静开孔窗」，不会跟到另一孔态，故另一态被读成长阻孔。此类文件继续用电平法；burst 用于开孔稳定、毛刺型/多电平的目标信号。
+
+---
+
 ## [2026-10-19] 事件表加「序号」+ 尖峰抑制覆盖范围实测
 
 **变更**

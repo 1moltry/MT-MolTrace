@@ -348,3 +348,182 @@ def detect_events(
         level0_final=level0,
         level0_refs=level0_refs,
     )
+
+
+# ---------------------------------------------------------------------------
+# Dwell-envelope burst detector (event_mode="burst")
+# ---------------------------------------------------------------------------
+
+def _runs_of(mask: np.ndarray, value: bool) -> list[tuple[int, int]]:
+    """Maximal runs where ``mask == value`` as half-open (start, stop) pairs."""
+    m = np.asarray(mask, dtype=bool) == value
+    if m.size == 0:
+        return []
+    change = np.flatnonzero(np.diff(m.astype(np.int8))) + 1
+    starts = np.concatenate(([0], change))
+    stops = np.concatenate((change, [m.size]))
+    return [(int(s), int(e)) for s, e in zip(starts, stops) if m[s]]
+
+
+def _fill_short_gaps(blocked: np.ndarray, max_len: int) -> np.ndarray:
+    """Set False runs shorter than ``max_len`` to True (morphological closing)."""
+    out = blocked.copy()
+    if max_len > 0:
+        for s, e in _runs_of(out, False):
+            if (e - s) < max_len:
+                out[s:e] = True
+    return out
+
+
+def _drop_short_blocks(blocked: np.ndarray, max_len: int) -> np.ndarray:
+    """Set True runs shorter than ``max_len`` to False (morphological opening)."""
+    out = blocked.copy()
+    if max_len > 0:
+        for s, e in _runs_of(out, True):
+            if (e - s) < max_len:
+                out[s:e] = False
+    return out
+
+
+def detect_events_burst(
+    current: np.ndarray,
+    sample_rate_hz: float,
+    level0: float,
+    level1: float,
+    polarity: int = 0,
+    *,
+    cutoff_hz: float | None = None,
+    pre_event_ms: float = 25.0,
+    enter_frac: float = 0.30,
+    exit_frac: float = 0.20,
+    min_gap_ms: float = 30.0,
+    min_block_ms: float = 2.0,
+    cross_baseline: bool = False,
+    baseline: np.ndarray | None = None,
+) -> DetectionResult:
+    """Dwell-envelope debounce: one blockade dwell = one event.
+
+    Instead of classifying every sample to a level and treating non-baseline
+    runs as events, build a *blockade indicator* from the distance to the
+    open-pore level, then debounce that boolean:
+
+      1. blocked(t) = departure from ``level0`` beyond ``enter_frac * step``.
+         One side per ``polarity``; both sides when ``polarity == 0`` or
+         ``cross_baseline`` is set (multi-level / baseline-crossing signals).
+      2. fill non-blocked gaps shorter than ``min_gap_ms`` — absorbs brief
+         returns to, or overshoots past, the open pore, so one dwell is not
+         cut into pieces; also merges a baseline-hopping burst.
+      3. drop blocked fragments shorter than ``min_block_ms`` — a lone spike
+         does not create an event.
+      4. each surviving blocked run is one event; its level is the median of
+         samples beyond ``exit_frac * step`` on the dominant side.
+
+    ``min_gap_ms`` is the burst-grouping threshold: smaller splits a burst into
+    one event per opening; larger merges more excursions. Events touching the
+    record boundaries are ignored (unknown extent), as in :func:`detect_events`.
+    """
+    levels = build_levels(level0, level1, polarity)
+    step = abs(level1 - level0)
+    if step <= 0:
+        return DetectionResult([], levels, sample_rate_hz, float(level0), np.array([]))
+
+    n = len(current)
+    dt = 1.0 / sample_rate_hz
+    tau_s = tau_samples_for(sample_rate_hz, cutoff_hz)
+    trim = int(round(2 * tau_s))
+    brief_len = int(round(4 * tau_s))
+    pre_n = int(round(pre_event_ms * 1e-3 * sample_rate_hz))
+    enter = enter_frac * step
+    exit_ = exit_frac * step
+    min_gap_n = max(1, int(round(min_gap_ms * 1e-3 * sample_rate_hz)))
+    min_block_n = max(1, int(round(min_block_ms * 1e-3 * sample_rate_hz)))
+
+    # reference open-pore current per sample: a dynamic baseline when supplied
+    # (follows pore-state switches / drift), else the constant level0
+    ref = baseline if baseline is not None else np.full(n, float(level0))
+    d = current - ref
+    use_both = polarity == 0 or cross_baseline
+    sign = 0.0 if use_both else (1.0 if level1 > level0 else -1.0)
+    blocked = np.abs(d) > enter if use_both else (sign * d) > enter
+
+    blocked = _fill_short_gaps(blocked, min_gap_n)
+    blocked = _drop_short_blocks(blocked, min_block_n)
+
+    events: list[Event] = []
+    for s, e in _runs_of(blocked, True):
+        if s == 0 or e == n:          # touches a record boundary: extent unknown
+            continue
+        m = e - s
+        if trim > 0 and m > 2 * trim:
+            body, bd = current[s + trim:e - trim], d[s + trim:e - trim]
+        else:
+            body, bd = current[s:e], d[s:e]
+        if body.size == 0:
+            continue
+
+        if use_both:
+            below, above = bd < -exit_, bd > exit_
+            if below.any() and int(below.sum()) >= int(above.sum()):
+                sel = body[below]
+            elif above.any():
+                sel = body[above]
+            else:
+                sel = body
+        else:
+            sel = body[sign * bd > exit_]
+            if sel.size == 0:
+                sel = body
+        amp = float(np.median(sel))
+        local0 = float(np.median(ref[max(0, s - pre_n):s])) if s > 0 else float(ref[s])
+        depth = amp - local0
+        level = int(np.clip(round(depth / step), -8, 8))
+        state = "B" if m < brief_len else "A"
+        events.append(Event(
+            start_s=s * dt,
+            end_s=e * dt,
+            amplitude_pA=amp,
+            depth_pA=depth,
+            level0_ref_pA=local0,
+            level=level,
+            state=state,
+        ))
+
+    level0_refs = np.array([ev.level0_ref_pA for ev in events])
+    return DetectionResult(events, levels, sample_rate_hz, float(level0), level0_refs)
+
+
+def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
+           cutoff_hz: float | None = None, i0_profile=None) -> DetectionResult:
+    """Dispatch on ``cfg.event_mode``.
+
+    ``lv`` is duck-typed (needs ``.level0`` / ``.level1`` / ``.polarity``), so
+    both the pipeline and the GUI worker share one entry point and can never
+    drift on parameter wiring. ``i0_profile`` (optional) gives burst mode a
+    per-sample open-pore reference so pore-state switches are not mistaken for
+    blockades.
+    """
+    cutoff = cutoff_hz if cutoff_hz is not None else cfg.filter_lowpass_hz
+    if getattr(cfg, "event_mode", "level") == "burst":
+        return detect_events_burst(
+            current, sample_rate_hz, lv.level0, lv.level1, lv.polarity,
+            cutoff_hz=cutoff,
+            pre_event_ms=cfg.pre_event_ms,
+            enter_frac=cfg.burst_enter_frac,
+            exit_frac=cfg.burst_exit_frac,
+            min_gap_ms=cfg.burst_min_gap_ms,
+            min_block_ms=cfg.burst_min_block_ms,
+            cross_baseline=cfg.burst_cross_baseline,
+            baseline=i0_profile.baseline if i0_profile is not None else None,
+        )
+    return detect_events(
+        current, sample_rate_hz, lv.level0, lv.level1,
+        ignore_duration_ms=cfg.ignore_duration_ms,
+        ignore_event_duration_ms=cfg.ignore_event_duration_ms,
+        level_contribution=cfg.level_contribution,
+        update_levels=cfg.update_levels,
+        polarity=lv.polarity,
+        cutoff_hz=cutoff,
+        pre_event_ms=cfg.pre_event_ms,
+        dwell_min_frac=cfg.dwell_min_frac,
+        plateau_min_frac=cfg.event_plateau_min_frac,
+    )

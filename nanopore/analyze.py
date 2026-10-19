@@ -24,7 +24,7 @@ from .anomaly import (AnomalyResult, detect_anomalies, detect_artifact_segments,
                       merge_anomaly_results)
 from .baseline import Levels, estimate_levels, set_polarity
 from .config import PipelineConfig
-from .detect import DetectionResult, detect_events
+from .detect import DetectionResult, detect
 from .features import classify_exclusions, compute_features
 from .mods import resolve_mods
 
@@ -61,28 +61,21 @@ def analyze(rec, cfg: PipelineConfig) -> AnalysisResult:
 
         filtered = lowpass(rec.current, rec.sample_rate_hz, cutoff)
 
-    det = detect_events(
-        filtered,
-        rec.sample_rate_hz,
-        lv.level0,
-        lv.level1,
-        ignore_duration_ms=cfg.ignore_duration_ms,
-        ignore_event_duration_ms=cfg.ignore_event_duration_ms,
-        level_contribution=cfg.level_contribution,
-        update_levels=cfg.update_levels,
-        polarity=lv.polarity,
-        cutoff_hz=cutoff,
-        pre_event_ms=cfg.pre_event_ms,
-        dwell_min_frac=cfg.dwell_min_frac,
-        plateau_min_frac=cfg.event_plateau_min_frac,
-    )
-
-    i0_profile = None
-    if "dynamic_i0" in mods:
+    # burst mode needs a per-sample open-pore reference so pore-state switches
+    # are not read as blockades; features consume this profile only when the
+    # dynamic_i0 mod is enabled
+    need_i0 = ("dynamic_i0" in mods) or (getattr(cfg, "event_mode", "level") == "burst")
+    i0_for_detect = None
+    if need_i0:
         from .baseline_i0 import build_dynamic_baseline
 
-        i0_profile = build_dynamic_baseline(rec.current, rec.sample_rate_hz,
-                                            anchor_level=lv.level0)
+        i0_for_detect = build_dynamic_baseline(rec.current, rec.sample_rate_hz,
+                                               anchor_level=lv.level0)
+
+    det = detect(filtered, rec.sample_rate_hz, lv, cfg,
+                 cutoff_hz=cutoff, i0_profile=i0_for_detect)
+
+    i0_profile = i0_for_detect if "dynamic_i0" in mods else None
 
     anom = None
     if "anomaly" in mods:

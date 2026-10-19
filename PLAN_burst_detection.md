@@ -1,6 +1,6 @@
 # PLAN — 驻留包络去抖事件检测（burst mode）
 
-> 状态：**未实施**。本文件是实施规格，供后续 agent 直接落实。
+> 状态：**已实施**（见 DEVLOG [2026-10-19] burst 检测模式）。实现差异：新增 `burst_cross_baseline`（基线上下穿越）、开孔参考改用动态 I0(t)、GUI 用参数面板内嵌分组（非独立 dock）。
 > 基线：`main` @ `f138e34`（文件内行号以此为准，改动后可能漂移）。
 > 关联模块：`nanopore/detect.py`、`config.py`、`pipeline.py`、`roi.py`、`gui/controller.py`、`gui/parampanel.py`、`cli.py`。
 

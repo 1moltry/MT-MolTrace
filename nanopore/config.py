@@ -48,6 +48,17 @@ class PipelineConfig:
     # params below, not mods.
     enabled_mods: tuple[str, ...] = ()
 
+    # --- detection variants (not mods; they change how the base detector works) ---
+    event_mode: str = "level"          # "level" = threshold/level runs (default);
+                                       # "burst" = dwell-envelope debounce (merges
+                                       # glitches and open-pore hopping into one event)
+    burst_enter_frac: float = 0.30     # burst: |I-I0| > this*step enters a blockade
+    burst_exit_frac: float = 0.20      # burst: amplitude read from samples beyond this*step
+    burst_min_gap_ms: float = 30.0     # burst: returns to open shorter than this do NOT split
+    burst_min_block_ms: float = 2.0    # burst: blocked fragments shorter than this are dropped
+    burst_cross_baseline: bool = False  # burst: departures on EITHER side of I0 count as
+                                       # one event (multi-level / baseline-crossing signals)
+
     # --- anomaly detection (mod "anomaly") ---
     jump_min_ms: float = 50.0          # macro: sustained shift must persist at least this long
     noise_sigma_mult: float = 4.0      # macro: sliding noise std above this multiple of robust sigma marks jitter

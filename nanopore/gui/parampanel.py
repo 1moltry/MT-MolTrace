@@ -71,6 +71,17 @@ class ParamPanel(QWidget):
         self.drift_frac = _spin(0.0, 1.0, 0.05, "", 0.01)
         self.drift_iqr = _spin(1.0, 20.0, 3.0, " x", 0.5)
 
+        # --- detection variant: level vs burst (base detector) ---
+        self.event_mode = QComboBox()
+        self.event_mode.addItem("电平法（现状）", "level")
+        self.event_mode.addItem("驻留包络去抖（burst）", "burst")
+        self.ignore_event = _spin(0.0, 2000.0, 50.0, " ms", 5.0)
+        self.b_enter = _spin(0.0, 2.0, 0.30, "", 0.05)
+        self.b_exit = _spin(0.0, 2.0, 0.20, "", 0.05)
+        self.b_gap = _spin(0.0, 5000.0, 30.0, " ms", 5.0)
+        self.b_block = _spin(0.0, 2000.0, 2.0, " ms", 0.5)
+        self.b_cross = QCheckBox("基线上下穿越（多电平）")
+
         # --- mod checkboxes ---
         self.mod_boxes: dict[str, QCheckBox] = {}
         for mid in ORDER:
@@ -129,6 +140,26 @@ class ParamPanel(QWidget):
         _tip(self.drift_iqr, "漂移不稳定阈值\n"
                               "区间 IQR ÷ 记录头 IQR ≥ 此倍数才算『不稳定』。\n"
                               "与位移阈值同时满足才判漂移（防止把平稳的孔态变化当漂移）。")
+        _tip(self.event_mode, "检测模式（底座）\n"
+                              "电平法：逐样本最近电平 + 同电平桥接（现状，默认）。\n"
+                              "驻留包络去抖：把一次阻孔内的毛刺、越孔、上下跳跃合并为一个事件。\n"
+                              "假设开孔电平稳定；Ala/Asp/Gln 这类慢孔态切换请用电平法。\n"
+                              "只改变分割方式，默认关，不影响底座。")
+        _tip(self.ignore_event, "事件合并容差（仅电平法 · Ignore short level changes）\n"
+                                "同电平事件之间、回到开孔的间隙短于此值时合并为一个事件。\n"
+                                "调大：长阻孔更不易被噪声槽切碎；调小：更接近逐次开合。")
+        _tip(self.b_enter, "阻孔进入阈值（×电平步长）\n"
+                           "|电流−开孔| 超过此比例才算进入阻孔。0.30 = 30% 步长。")
+        _tip(self.b_exit, "事件电平取样阈值（×步长）\n"
+                          "估事件电平时只取超过此比例的样本（< 进入阈值，避开边缘过渡）。")
+        _tip(self.b_gap, "毛刺 / 开孔容差（ms）· 主调钮\n"
+                         "回到开孔的时长短于它就不切断事件：吸收毛刺、合并上下跳跃。\n"
+                         "调大：更不易切碎，但可能把相邻真事件并成一个；调小：反之。")
+        _tip(self.b_block, "最短阻孔（ms）\n"
+                           "短于此的阻孔碎片丢弃（滤孤立尖峰，不新建事件）。")
+        _tip(self.b_cross, "基线上下穿越（多电平）\n"
+                           "把开孔电流两侧的偏离都算作同一事件。\n"
+                           "用于电流在基线上下来回跳、甚至多电平的信号。默认关。")
 
         # ---------------- layout ----------------
         # 模块（可多选）
@@ -149,6 +180,8 @@ class ParamPanel(QWidget):
         base = QGroupBox("参数")
         form = QFormLayout(base)
         form.addRow("尖峰抑制 (ms)", self.ignore)
+        form.addRow("事件合并容差 (ms)", self.ignore_event)
+        form.addRow("检测模式", self.event_mode)
         form.addRow("pre_event", self.pre)
         form.addRow("Level contribution", self.contrib)
         form.addRow("最短事件时长 (ms)", self.min_toff)
@@ -159,6 +192,14 @@ class ParamPanel(QWidget):
         form.addRow("事件极性", self.polarity)
 
         # 模块参数（随模块显隐）
+        self.burst_box = QGroupBox("驻留包络去抖（burst）")
+        bf = QFormLayout(self.burst_box)
+        bf.addRow("进入阈值 (×步长)", self.b_enter)
+        bf.addRow("取样阈值 (×步长)", self.b_exit)
+        bf.addRow("毛刺 / 开孔容差 (ms)", self.b_gap)
+        bf.addRow("最短阻孔 (ms)", self.b_block)
+        bf.addRow("", self.b_cross)
+
         self.lowpass_box = QGroupBox("低通滤波")
         lf = QFormLayout(self.lowpass_box)
         lf.addRow("截止频率 (0=关)", self.lowpass)
@@ -187,6 +228,7 @@ class ParamPanel(QWidget):
         lay = QVBoxLayout(self)
         lay.addWidget(modbox)
         lay.addWidget(base)
+        lay.addWidget(self.burst_box)
         lay.addWidget(self.lowpass_box)
         lay.addWidget(self.i0_box)
         lay.addWidget(self.refined_box)
@@ -197,7 +239,9 @@ class ParamPanel(QWidget):
         self._load_settings()
         for mid, cb in self.mod_boxes.items():
             cb.stateChanged.connect(lambda _state, m=mid: self._on_mod_toggled(m))
+        self.event_mode.currentIndexChanged.connect(self._sync_mode)
         self._update_visibility()
+        self._sync_mode()
 
     # ---------------- mod helpers ----------------
     def _checked_raw(self) -> list[str]:
@@ -240,6 +284,9 @@ class ParamPanel(QWidget):
         self.i0_box.setVisible("dynamic_i0" in on)
         self.refined_box.setVisible("refined_anomaly" in on)
 
+    def _sync_mode(self) -> None:
+        self.burst_box.setVisible(self.event_mode.currentData() == "burst")
+
     def _load_settings(self) -> None:
         saved = QSettings(*_SETTINGS).value("enabled_mods", None)
         if saved is None:
@@ -262,6 +309,13 @@ class ParamPanel(QWidget):
             level1=self.l1.value() if self.l1_en.isChecked() else None,
             polarity=self.polarity.currentData(),
             ignore_duration_ms=self.ignore.value(),
+            ignore_event_duration_ms=self.ignore_event.value(),
+            event_mode=self.event_mode.currentData(),
+            burst_enter_frac=self.b_enter.value(),
+            burst_exit_frac=self.b_exit.value(),
+            burst_min_gap_ms=self.b_gap.value(),
+            burst_min_block_ms=self.b_block.value(),
+            burst_cross_baseline=self.b_cross.isChecked(),
             level_contribution=self.contrib.value(),
             min_toff_ms=self.min_toff.value(),
             event_plateau_min_frac=self.plateau.value(),
@@ -275,6 +329,15 @@ class ParamPanel(QWidget):
 
     def load_config(self, cfg: PipelineConfig) -> None:
         self.ignore.setValue(cfg.ignore_duration_ms)
+        self.ignore_event.setValue(cfg.ignore_event_duration_ms)
+        self.b_enter.setValue(cfg.burst_enter_frac)
+        self.b_exit.setValue(cfg.burst_exit_frac)
+        self.b_gap.setValue(cfg.burst_min_gap_ms)
+        self.b_block.setValue(cfg.burst_min_block_ms)
+        self.b_cross.setChecked(cfg.burst_cross_baseline)
+        idx = self.event_mode.findData(cfg.event_mode)
+        self.event_mode.setCurrentIndex(idx if idx >= 0 else 0)
+        self._sync_mode()
         self.pre.setValue(cfg.pre_event_ms)
         self.contrib.setValue(cfg.level_contribution)
         self.lowpass.setValue(cfg.filter_lowpass_hz or 0.0)
