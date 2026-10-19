@@ -258,6 +258,8 @@ python release/build_release.py          # 出 release/SDL纳米孔分析_v<版�
 
 构建脚本先用 `git archive HEAD` 取干净源码树（`.gitattributes` 里的 `export-ignore` 规则剔除 tests、DEVLOG、规划稿、CI 配置、启动 bat；未入库的本地文件本就进不去），再用 PyInstaller 打成免安装 exe 目录，附上 `README.md` 与 `LICENSE`，最后校验清单并压缩。
 
+构建使用独立的干净 venv（默认 `build/venv`，不存在时脚本自动创建并按 `pyproject.toml` 安装依赖）。这一步很关键：直接用 Anaconda 基础环境会把 MKL、cupy、panel 等无关包带进包里，体积从约 300 MB 膨胀到 2 GB。
+
 要求工作区已提交（`--dirty` 可跳过检查，仅用于调试即出包）；图标默认取 `E:\download\1moltry_nanopore_no_person.ico`，可用 `--icon` 覆盖。
 
 ## 开发约定

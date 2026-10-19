@@ -45,6 +45,7 @@ SPEC_DIR = BUILD
 OUT_DIR = REPO / "release"
 
 DEFAULT_ICON = Path(r"E:\download\1moltry_nanopore_no_person.ico")
+DEFAULT_VENV = REPO / "build" / "venv"     # clean build env (see ensure_build_python)
 EXE_NAME = "SDL纳米孔分析"
 ENTRY_NAME = "_frozen_entry.py"
 
@@ -58,11 +59,23 @@ HIDDEN_IMPORTS = (
     "matplotlib.backends.backend_agg",
 )
 
-# Trim the bundle: Qt modules and dev tooling this GUI never touches.
+# Trim the bundle: Qt modules and dev tooling this GUI never touches. Building
+# in a clean venv already keeps Anaconda extras out; this list is belt and braces.
 EXCLUDES = (
     "tkinter",
     "IPython",
     "pytest",
+    "cupy",
+    "numba",
+    "llvmlite",
+    "panel",
+    "bokeh",
+    "holoviews",
+    "notebook",
+    "playwright",
+    "botocore",
+    "boto3",
+    "duckdb",
     "PyQt5.QtWebEngineWidgets",
     "PyQt5.QtWebEngineCore",
     "PyQt5.QtQuick",
@@ -109,16 +122,31 @@ def run(cmd: list[str], **kw) -> None:
     subprocess.run(cmd, check=True, **kw)
 
 
-def check_requirements() -> None:
-    missing = []
-    for mod in ("PyInstaller", "PyQt5", "pyqtgraph", "scipy", "pandas",
-                "matplotlib", "openpyxl", "pyabf"):
-        try:
-            __import__(mod)
-        except ImportError:
-            missing.append(mod)
-    if missing:
-        sys.exit(f"缺少构建依赖：{', '.join(missing)}。先 pip install -e \".[dev]\"。")
+def check_requirements(py: str) -> None:
+    code = ("import PyInstaller, PyQt5, pyqtgraph, scipy, pandas, numpy, "
+            "matplotlib, openpyxl, pyabf")
+    if subprocess.run([py, "-c", code], capture_output=True).returncode != 0:
+        sys.exit(f"构建环境缺少依赖：{py}\n请删除 build/venv 让脚本重建，"
+                 f"或运行 pip install -e \".[dev]\" pyinstaller。")
+
+
+def ensure_build_python(venv: Path) -> str:
+    """Use a dedicated clean venv, so the Anaconda base env does not leak into
+    the bundle (MKL, cupy, panel, playwright ... bloated a 2 GB build)."""
+    py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    if py.exists():
+        return str(py)
+    print(f"创建干净构建环境：{venv}")
+    run([sys.executable, "-m", "venv", str(venv)])
+    py_s = str(py)
+    run([py_s, "-m", "pip", "install", "--upgrade", "pip"])
+    with (REPO / "pyproject.toml").open("rb") as fh:
+        project = tomllib.load(fh)["project"]
+    deps = (list(project["dependencies"])
+            + list(project.get("optional-dependencies", {}).get("gui", []))
+            + ["pyinstaller"])
+    run([py_s, "-m", "pip", "install", *deps])
+    return py_s
 
 
 def assert_clean_tree(allow_dirty: bool) -> None:
@@ -144,7 +172,7 @@ def stage_source() -> None:
     try:
         run(["git", "archive", "--format=tar", "-o", str(tar_path), "HEAD"], cwd=REPO)
         with tarfile.open(tar_path) as tf:
-            tf.extractall(STAGE)
+            tf.extractall(STAGE, filter="data")
     finally:
         tar_path.unlink(missing_ok=True)
 
@@ -163,18 +191,17 @@ def write_entry() -> None:
     )
 
 
-def freeze(icon: Path) -> None:
+def freeze(py: str, icon: Path) -> None:
     if not icon.exists():
         sys.exit(f"图标文件不存在：{icon}（用 --icon 指定）")
     args = [
-        sys.executable, "-m", "PyInstaller",
+        py, "-m", "PyInstaller",
         "--noconfirm", "--clean", "--windowed", "--onedir",
         "--name", EXE_NAME,
         "--icon", str(icon),
         "--distpath", str(DIST),
         "--workpath", str(WORK),
         "--specpath", str(SPEC_DIR),
-        "--collect-submodules", "pyabf",
     ]
     for mod in HIDDEN_IMPORTS:
         args += ["--hidden-import", mod]
@@ -237,20 +264,23 @@ def dir_size(path: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="构建 Windows 发行包（免安装 exe + zip）")
     ap.add_argument("--icon", type=Path, default=DEFAULT_ICON, help="应用图标 .ico")
+    ap.add_argument("--venv", type=Path, default=DEFAULT_VENV,
+                    help="干净构建环境（不存在则自动创建并装依赖）")
     ap.add_argument("--dirty", action="store_true",
                     help="允许工作区不干净（默认要求先提交，避免包内容陈旧）")
     ap.add_argument("--skip-install-check", action="store_true",
                     help="跳过构建依赖自检")
     args = ap.parse_args()
 
+    py = ensure_build_python(args.venv)
     if not args.skip_install_check:
-        check_requirements()
+        check_requirements(py)
     version = read_version()
-    print(f"构建 {EXE_NAME} v{version}")
+    print(f"构建 {EXE_NAME} v{version}，解释器 {py}")
     assert_clean_tree(args.dirty)
     stage_source()
     write_entry()
-    freeze(args.icon)
+    freeze(py, args.icon)
     pkg_app = assemble()
     zip_path = make_zip(pkg_app, version)
     verify_zip(zip_path)
