@@ -30,6 +30,7 @@
 **功能模块化 完成**：底座 + 可多选模块（默认最小、GUI 记住上次选择）；抽出共享 `analyze()` 消除 GUI/CLI 重复。见下方 [2026-10-19]。
 **GUI 布局重做 完成**：左侧事件表 + 剔除事件表、中间上波形下切片、点击联动（平移不改缩放）。见下方 [2026-10-19]。
 **事件波形导出 完成**：`waveform_export` 模块把每个保留事件的原始电流序列（无余量）导出为 `<名>_events.mat`，供 MATLAB 直接读取。见下方 [2026-10-19]。
+**发行打包 完成**：`release/build_release.py` 一键产出 Windows 免安装 exe + zip（干净源码树，无内部文件）；README 改为用户向，开发文档移入 `DEVELOPMENT.md`。见下方 [2026-10-19]。
 
 ---
 
@@ -96,6 +97,20 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-19] 发行打包（免安装 exe）+ README 用户向重写
+
+**目标**：把软件交给别人用——解压双击即开、不装 Python、不含任何内部文件。
+**变更**
+- 新增 `release/build_release.py`：`git archive HEAD` 取干净源码树（`.gitattributes` 的 `export-ignore` 剔除 tests/DEVLOG/DEVELOPMENT/规划稿/.github/启动 bat/data/release）→ PyInstaller `--windowed --onedir` 冻结 GUI（hidden imports: pyabf、scipy.io、openpyxl、matplotlib.pyplot+Agg；排除 tkinter 与未用到的 Qt 模块）→ 附 README/LICENSE → 清单断言 → `release/SDL纳米孔分析_v0.1.0_win64.zip`。要求工作区已提交（`--dirty` 仅调试）。
+- README 重写为**用户向**（快速上手 / 界面导览 / 如何导出 / 输出文件 / 常用设置 / MATLAB 对接 / FAQ）；开发内容迁入新建 `DEVELOPMENT.md`（安装、CLI、模块表、检测模式、参数表、电压与漂移判据、结构、测试、打包）。
+- `.gitattributes` 增 `export-ignore`；`.gitignore` 增 `/release/*.zip`；`pyproject.toml` 删未引用的 `xlrd`。
+
+**测试**：`python -m pytest tests/ -q` → 169 passed；构建脚本产出 zip，清单核对无 tests/DEVLOG/PLAN/.github/CLAUDE.md/data。
+
+**下一步**：图形观感与 exe 首次启动需用户人工过目（本模型无视觉确认能力）。
 
 ---
 
