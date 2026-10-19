@@ -27,6 +27,7 @@
 **工程化 完成**：纳入 git 版本控制并搭建 GitHub 协作流程（CI / 模板 / Dependabot / 打包）。见下方 [2026-09-20]。
 **文档与协作 完成**：仓库更名 `SDL-Auto-Data-process`；`CONTRIBUTING.md` 回归贡献者指南并载明共同开发者与资助方，协作机制移入本文件；`LICENSE` / `pyproject.toml` 署名同步。见下方 [2026-09-25]。
 **项目精简 完成**：删除从未入库的「先验增强引擎」层，仓库收敛为单一 `nanopore` 包；修复 pyabf/GUI 依赖与 CI 的隐性错配。见下方 [2026-10-09]。
+**功能模块化 完成**：底座 + 可多选模块（默认最小、GUI 记住上次选择）；抽出共享 `analyze()` 消除 GUI/CLI 重复。见下方 [2026-10-19]。
 
 ---
 
@@ -93,6 +94,26 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-19] 功能模块化（mod 注册表）— 默认最小、可多选
+
+**变更**
+- 新增 `nanopore/mods.py`：`ModSpec` / `MODS` / `ORDER` / `resolve_mods`（补依赖、去重、拓扑排序）。7 个模块：`lowpass`、`dynamic_i0`、`anomaly`、`refined_anomaly`、`plots`、`dataset_export`、`summary`。**检测变体（`polarity` / 事件平台占比 / `ignore_*`）不做成模块**，仍留参数面板——它们改变底座「怎么检测」，与模块正交。
+- `config.py`：新增 `enabled_mods`（空 = 仅底座）；删除被模块取代的 `anomaly_enabled` / `dynamic_i0_enabled` / `refined_anomaly_enabled`。旧 JSON 协议仍可读（未知键被丢弃）。
+- 新增 `nanopore/analyze.py`：共享 `analyze(rec, cfg)`（底座 + 按 mods 编排）。`pipeline.process_file` 与 GUI `AnalysisWorker` 均改调它，**消除两处近乎重复的编排**（顺带修掉的真重复）。
+- `pipeline.run_batch`：`dataset_all.csv` / `summary.xlsx` 仅在对应模块开启时写出；`plots` 同理。
+- `cli.py`：新增 `--mods / --minimal / --all`；`--no-anomaly` 改为「从模块集去掉 anomaly」的别名。
+- GUI `parampanel.py`：新增「模块（可多选）」组，含**方向感知的依赖联动**（勾子项自动补前置、取消前置级联取消后置）；模块参数分组成框、随开关显隐；用 `QSettings` **记住上次选择**（首次为默认=仅底座）。
+- **行为变更**：默认从「全开」变为「仅底座」。需要旧行为用 `--all`（README 已醒目标注）。
+
+**测试**：`python -m pytest -q` → **143 passed**（新增 `tests/test_mods.py` 18 例：注册表完整性、`resolve_mods`、config 前后兼容、`analyze` 编排、minimal/all 端到端产物、GUI 面板联动与依赖级联）。CLI 冒烟：`--minimal` 仅出 `_events.xlsx`，`--all` 出全产物。
+
+**遗留**
+- `anomaly` 模块的 `jump_min_ms` 等参数未在 GUI 暴露（走 JSON / CLI），后续按需补控件。
+- GUI 未做视觉确认（模型无视觉能力）：模块面板与参数显隐需人工过目。
+- burst 检测（`PLAN_burst_detection.md`）仍待做，按约定排在模块化之后。
 
 ---
 

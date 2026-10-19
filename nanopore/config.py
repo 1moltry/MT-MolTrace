@@ -41,15 +41,20 @@ class PipelineConfig:
                                          # removes genuine multi-level events -> per-file knob).
     min_toff_ms: float = 10.0          # export filter: keep events with toff > this (ms)
 
-    # --- anomaly detection ---
-    anomaly_enabled: bool = True
+    # --- feature modules (multi-select; the base pipeline always runs) ---
+    # Optional stages/outputs to enable (see nanopore.mods). Empty = base only:
+    # read -> level estimation -> detection -> features -> events table.
+    # Detection *variants* (polarity / event_mode / plateau gate) stay plain
+    # params below, not mods.
+    enabled_mods: tuple[str, ...] = ()
+
+    # --- anomaly detection (mod "anomaly") ---
     jump_min_ms: float = 50.0          # macro: sustained shift must persist at least this long
     noise_sigma_mult: float = 4.0      # macro: sliding noise std above this multiple of robust sigma marks jitter
     jitter_min_ms: float = 100.0
     # fine-grained artifact detector: reverse voltage / rupture / graded jitter /
     # irregular blockage with spontaneous-vs-manual recovery; needs the voltage
-    # trace and the dynamic I0 baseline
-    refined_anomaly_enabled: bool = True
+    # trace and the dynamic I0 baseline (mod "refined_anomaly")
     refined_jitter_window_ms: float = 100.0
     refined_jitter_mild_ratio: float = 3.0
     refined_jitter_severe_ratio: float = 8.0
@@ -77,8 +82,6 @@ class PipelineConfig:
     # --- features ---
     pre_event_ms: float = 25.0         # open-pore current window before the event
     dr_pA: float = 5.0                 # |Io(i)-I0|>5 pA fallback threshold for Io continuity
-    dynamic_i0_enabled: bool = True    # per-event Io from a quiet-segment dynamic baseline
-                                       # (immune to a long blockage being taken as open pore)
 
     # --- output ---
     label: str = ""                    # Label column value; defaults to file stem

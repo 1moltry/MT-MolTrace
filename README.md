@@ -54,6 +54,11 @@ python -m nanopore run "pore2 ARNKRS 2Mm_0000.abf" --polarity both
 
 # 导出当前参数为 JSON（作为后续 --config 模板）
 python -m nanopore run <目录> --save-config params.json
+
+# 模块化：默认只跑底座；--all 打开全部模块（≈旧默认）；--mods 自选（依赖自动补齐）
+python -m nanopore run <目录> --minimal
+python -m nanopore run <目录> --all
+python -m nanopore run <目录> --mods anomaly,plots
 ```
 
 ## 图形界面（GUI，v2）
@@ -90,7 +95,7 @@ python -m nanopore run "pCLAMP11.2/Sample Data" -o output_pclamp
 
 ## 输出
 
-每个输入文件生成：
+每个输入文件生成（取决于启用的模块；未开对应模块则无对应产物）：
 
 | 文件 | 内容 |
 |------|------|
@@ -123,6 +128,24 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 - `t1`/`t2` → **`t1_s`/`t2_s`**：本管线为**秒**，课题组特征表规范为**毫秒**，改名以免无声差 1000 倍。
 
 做特征时应排除 `t1_s`/`t2_s`（时间戳，会造成时间泄漏）与 `I0`（逐记录常数）。
+
+## 功能模块（mod）
+
+管线 = **底座 + 可多选模块**。底座恒跑：读盘 → 电平估计 → 事件检测 → 特征提取 → 事件表 `<名>_events.xlsx`。其余功能都是模块，**默认全关**，按需开启（CLI `--mods/--all/--minimal`；GUI「模块（可多选）」面板勾选，并记住上次选择）。
+
+| mod | 作用 | 主要参数 | 产物 |
+|-----|------|----------|------|
+| `lowpass` | 检测前低通滤波 | `filter_lowpass_hz` | 滤波后信号 |
+| `dynamic_i0` | 动态开孔基线，逐事件 Io | `dr_pA` | 逐事件 Io |
+| `anomaly` | 宏异常（反压/膜抖/炸膜/漂移） | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
+| `refined_anomaly` | 细粒度分级异常（依赖 `anomaly` + `dynamic_i0`） | `refined_*` | 分级 kind |
+| `plots` | 输出三张图 | — | `_overview/_scatter/_hist.png` |
+| `dataset_export` | 合并训练表 | — | `dataset_all.csv` |
+| `summary` | 批次汇总 | — | `summary.xlsx` |
+
+**检测变体不是模块**：事件极性（`polarity`）、事件平台占比（毛刺门控）等仍在参数里，它们改变底座「怎么检测」，与模块正交。
+
+> **行为变更**：默认「只底座」不同于旧版（旧版默认全开异常/图/合并表/汇总）。需要旧行为用 `--all`。
 
 ## 参数说明
 
@@ -178,6 +201,8 @@ nanopore/          Python 包
 ├── features.py    特征提取（列名遵循课题组既定特征表规范）
 ├── roi.py         Cursor 局部分析（子区间独立电平重析）
 ├── analysis.py    可视化与批次报告
+├── analyze.py     共享分析编排（底座 + 模块；pipeline 与 GUI 共用）
+├── mods.py        功能模块注册表（ModSpec / MODS / resolve_mods）
 ├── cli.py         命令行入口（run / gui）
 ├── config.py      参数管理
 └── gui/           交互式桌面 GUI（PyQt5 + pyqtgraph）

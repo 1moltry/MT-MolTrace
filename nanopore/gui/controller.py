@@ -1,23 +1,17 @@
 """App state + background analysis worker.
 
-Reuses the existing pipeline functions (read_abf -> estimate_levels ->
-detect_events -> detect_anomalies -> compute_features) in a worker thread so a
-large .abf never blocks the Qt event loop.
+Reuses :func:`nanopore.analyze.analyze` (base pipeline + enabled mods) in a
+worker thread so a large .abf never blocks the Qt event loop.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
-from ..anomaly import (detect_anomalies, detect_artifact_segments,
-                       merge_anomaly_results)
-from ..baseline import estimate_levels
+from ..analyze import analyze
 from ..config import PipelineConfig
-from ..detect import detect_events
-from ..features import compute_features
 from ..io import read_abf
 from .bus import bus
 
@@ -34,93 +28,8 @@ class AnalysisWorker(QThread):
     def run(self) -> None:
         try:
             rec = read_abf(self.path)
-            lv = estimate_levels(
-                rec.current,
-                hist_bins=self.cfg.hist_bins,
-                baseline=self.cfg.level0,
-                event_level=self.cfg.level1,
-            )
-            filtered = rec.current
-            cutoff = self.cfg.filter_lowpass_hz
-            if cutoff:
-                from ..preprocess import lowpass
-
-                filtered = lowpass(rec.current, rec.sample_rate_hz, cutoff)
-            det = detect_events(
-                filtered,
-                rec.sample_rate_hz,
-                lv.level0,
-                lv.level1,
-                ignore_duration_ms=self.cfg.ignore_duration_ms,
-                ignore_event_duration_ms=self.cfg.ignore_event_duration_ms,
-                level_contribution=self.cfg.level_contribution,
-                update_levels=self.cfg.update_levels,
-                polarity=lv.polarity,
-                cutoff_hz=cutoff,
-                pre_event_ms=self.cfg.pre_event_ms,
-                dwell_min_frac=self.cfg.dwell_min_frac,
-                plateau_min_frac=self.cfg.event_plateau_min_frac,
-            )
-            i0_profile = None
-            if self.cfg.dynamic_i0_enabled:
-                from ..baseline_i0 import build_dynamic_baseline
-
-                i0_profile = build_dynamic_baseline(rec.current, rec.sample_rate_hz,
-                                                    anchor_level=lv.level0)
-            anom = None
-            if self.cfg.anomaly_enabled:
-                from ..anomaly import ArtifactConfig
-
-                macro = detect_anomalies(
-                    rec.current,
-                    rec.sample_rate_hz,
-                    open_pore=lv.level0,
-                    noise_sigma=lv.noise_sigma,
-                    event_levels=lv.levels,
-                    jump_min_ms=self.cfg.jump_min_ms,
-                    jitter_mult=self.cfg.noise_sigma_mult,
-                    jitter_min_ms=self.cfg.jitter_min_ms,
-                    jitter_level_frac_max=self.cfg.refined_jitter_level_frac_max,
-                )
-                refined = None
-                if self.cfg.refined_anomaly_enabled:
-                    acfg = ArtifactConfig(
-                        jitter_window_ms=self.cfg.refined_jitter_window_ms,
-                        jitter_mild_ratio=self.cfg.refined_jitter_mild_ratio,
-                        jitter_severe_ratio=self.cfg.refined_jitter_severe_ratio,
-                        jitter_osc_floor=self.cfg.refined_jitter_osc_floor,
-                        blockage_min_ms=self.cfg.refined_blockage_min_ms,
-                        blockage_fraction=self.cfg.refined_blockage_fraction,
-                        rupture_iqr_min_pA=self.cfg.refined_rupture_iqr_min_pA,
-                        rupture_noise_min_ratio=self.cfg.refined_rupture_noise_min_ratio,
-                        rupture_level_frac_max=self.cfg.refined_rupture_level_frac_max,
-                    )
-                    refined = detect_artifact_segments(
-                        rec.current,
-                        rec.sample_rate_hz,
-                        voltage=rec.protocol_voltage,
-                        i0_profile=i0_profile,
-                        open_pore=lv.level0,
-                        event_levels=lv.levels,
-                        cfg=acfg,
-                    )
-                anom = merge_anomaly_results(macro, refined)
-            df = compute_features(
-                det,
-                filtered,
-                rec.sample_rate_hz,
-                label=self.cfg.label or self.path.stem,
-                pre_event_ms=self.cfg.pre_event_ms,
-                dr_pA=self.cfg.dr_pA,
-                i0_profile=i0_profile,
-            )
-            # exclusion with a traceable reason, split kept/excluded
-            from ..features import classify_exclusions
-
-            df, df_excluded = classify_exclusions(
-                df, anom.regions if anom else [], self.cfg.min_toff_ms
-            )
-            self.done.emit(rec, lv, df, df_excluded, (anom, det))
+            res = analyze(rec, self.cfg)
+            self.done.emit(res.rec, res.lv, res.df, res.df_excluded, (res.anom, res.det))
         except Exception as exc:  # surface as a status message, keep the app alive
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 

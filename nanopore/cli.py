@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import PipelineConfig
+from .mods import all_mods, resolve_mods
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,7 +21,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("-o", "--output", default="output", help="output directory (default: ./output)")
     r.add_argument("--config", default=None, help="JSON parameter file (see config.PipelineConfig)")
     r.add_argument("--label", default="", help="Label column override for the feature table")
-    r.add_argument("--no-anomaly", action="store_true", help="disable anomaly detection")
+    r.add_argument("--no-anomaly", action="store_true",
+                   help="drop the anomaly mods from the enabled set (alias for --mods minus anomaly)")
+    r.add_argument("--mods", default=None,
+                   help="comma-separated mod ids to enable (lowpass,dynamic_i0,anomaly,"
+                        "refined_anomaly,plots,dataset_export,summary); dependencies are added "
+                        "automatically. Overrides the config file's enabled_mods.")
+    r.add_argument("--minimal", action="store_true", help="base pipeline only, no mods")
+    r.add_argument("--all", action="store_true", help="enable every mod")
     r.add_argument("--level0", type=float, default=None, help="manual baseline (pA), skips auto estimation")
     r.add_argument("--level1", type=float, default=None, help="manual event level (pA)")
     r.add_argument("--polarity", choices=("auto", "up", "down", "both"), default="auto",
@@ -46,8 +54,16 @@ def main(argv: list[str] | None = None) -> int:
     cfg = PipelineConfig.load(args.config) if args.config else PipelineConfig()
     if args.label:
         cfg.label = args.label
+    # module selection: explicit flags override the config file's enabled_mods
+    if args.all:
+        cfg.enabled_mods = all_mods()
+    elif args.minimal:
+        cfg.enabled_mods = ()
+    if args.mods is not None:
+        cfg.enabled_mods = resolve_mods([s.strip() for s in args.mods.split(",") if s.strip()])
     if args.no_anomaly:
-        cfg.anomaly_enabled = False
+        cfg.enabled_mods = tuple(m for m in resolve_mods(cfg.enabled_mods)
+                                 if m not in ("anomaly", "refined_anomaly"))
     if args.level0 is not None:
         cfg.level0 = args.level0
     if args.level1 is not None:
@@ -77,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
 
     reports = run_batch(files, out, cfg)
     ok = sum(1 for r in reports if not r.error)
-    print(f"done: {ok}/{len(reports)} files processed, summary at {out / 'summary.xlsx'}")
+    tail = f", summary at {out / 'summary.xlsx'}" if "summary" in resolve_mods(cfg.enabled_mods) else ""
+    print(f"done: {ok}/{len(reports)} files processed{tail}")
     return 0
 
 

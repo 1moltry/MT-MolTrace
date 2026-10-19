@@ -1,6 +1,6 @@
 # PLAN — 功能模块化（mod 注册表）
 
-> 状态：**未实施**。本文件是实施规格，供后续 agent 直接落实。
+> 状态：**已实施**（见 DEVLOG [2026-10-19] 功能模块化）。保留作设计留档；实现与本文的差异见该条 DEVLOG。
 > 基线：`main` @ `f138e34` 之后（含 2026-10-19 清理提交）。行号可能漂移。
 > 关联模块：`nanopore/config.py`、`pipeline.py`、`cli.py`、`gui/controller.py`、`gui/parampanel.py`、`gui/main_window.py`、`analysis.py`。
 > 伴生规格：`PLAN_burst_detection.md`（检测变体，见 §12）。
