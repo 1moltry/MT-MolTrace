@@ -98,6 +98,25 @@ def test_lone_spike_is_dropped():
     assert len(r.events) == 0
 
 
+def test_sparse_spike_chain_is_not_an_event():
+    # short dips separated by open gaps < min_gap: gap-filling would otherwise
+    # manufacture one long "event" whose body is almost entirely open pore.
+    cur = _sig()
+    t = 0.20
+    while t < 0.50:
+        _set(cur, t, t + 0.002, 40.0)
+        t += 0.012
+    r = _burst(cur, min_gap_ms=30)
+    assert len(r.events) == 0
+
+
+def test_sustained_event_survives_occupancy_gate():
+    cur = _sig()
+    _set(cur, 0.20, 0.60, 40.0)
+    r = _burst(cur, min_gap_ms=30)
+    assert len(r.events) == 1
+
+
 def test_boundary_events_ignored():
     cur = _sig()
     _set(cur, 0.0, 0.20, 40.0)                   # touches record start

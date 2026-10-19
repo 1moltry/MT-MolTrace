@@ -50,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--burst-cross-baseline", action="store_true",
                    help="burst: departures on EITHER side of the open pore count as one "
                         "event (multi-level / baseline-crossing signals)")
+    r.add_argument("--burst-min-occupied-frac", type=float, default=None,
+                   help="burst: reject events whose body is blocked for less than this "
+                        "fraction of its dwell (default 0.30)")
+    r.add_argument("--burst-min-depth-frac", type=float, default=None,
+                   help="burst: ...unless the body median is deflected by this x step "
+                        "(default 0.15; keeps shallow sustained states)")
     r.add_argument("--save-config", default=None, help="write the effective config to this JSON path and exit")
 
     g = sub.add_parser("gui", help="launch the interactive desktop GUI")
@@ -90,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     for field, value in (("burst_enter_frac", args.burst_enter_frac),
                          ("burst_exit_frac", args.burst_exit_frac),
                          ("burst_min_gap_ms", args.burst_min_gap_ms),
-                         ("burst_min_block_ms", args.burst_min_block_ms)):
+                         ("burst_min_block_ms", args.burst_min_block_ms),
+                         ("burst_min_occupied_frac", args.burst_min_occupied_frac),
+                         ("burst_min_depth_frac", args.burst_min_depth_frac)):
         if value is not None:
             setattr(cfg, field, value)
     if args.burst_cross_baseline:

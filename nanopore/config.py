@@ -58,6 +58,11 @@ class PipelineConfig:
     burst_min_block_ms: float = 2.0    # burst: blocked fragments shorter than this are dropped
     burst_cross_baseline: bool = False  # burst: departures on EITHER side of I0 count as
                                        # one event (multi-level / baseline-crossing signals)
+    burst_min_occupied_frac: float = 0.30  # burst: reject an event whose body is actually
+                                           # blocked for less than this fraction of its dwell
+                                           # (a chain of sparse spikes is not an event)
+    burst_min_depth_frac: float = 0.15     # burst: ... unless its body median is deflected by
+                                           # at least this * step (keeps shallow sustained states)
 
     # --- anomaly detection (mod "anomaly") ---
     jump_min_ms: float = 50.0          # macro: sustained shift must persist at least this long

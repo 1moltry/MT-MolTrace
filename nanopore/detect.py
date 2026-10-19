@@ -400,6 +400,8 @@ def detect_events_burst(
     min_block_ms: float = 2.0,
     cross_baseline: bool = False,
     baseline: np.ndarray | None = None,
+    min_occupied_frac: float = 0.30,
+    min_depth_frac: float = 0.15,
 ) -> DetectionResult:
     """Dwell-envelope debounce: one blockade dwell = one event.
 
@@ -461,6 +463,15 @@ def detect_events_burst(
         if body.size == 0:
             continue
 
+        # A run can span mostly open-pore samples when short gaps were filled
+        # between sparse spikes. Such a chain is not an event: require either a
+        # substantial blocked fraction, or a sustained (median) deflection.
+        blocked_body = (np.abs(bd) > enter) if use_both else (sign * bd > enter)
+        occupied = float(np.mean(blocked_body)) if blocked_body.size else 0.0
+        body_med = float(np.median(bd)) if bd.size else 0.0
+        if occupied < min_occupied_frac and abs(body_med) < min_depth_frac * step:
+            continue
+
         if use_both:
             below, above = bd < -exit_, bd > exit_
             if below.any() and int(below.sum()) >= int(above.sum()):
@@ -514,6 +525,8 @@ def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
             min_block_ms=cfg.burst_min_block_ms,
             cross_baseline=cfg.burst_cross_baseline,
             baseline=i0_profile.baseline if i0_profile is not None else None,
+            min_occupied_frac=cfg.burst_min_occupied_frac,
+            min_depth_frac=cfg.burst_min_depth_frac,
         )
     return detect_events(
         current, sample_rate_hz, lv.level0, lv.level1,

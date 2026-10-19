@@ -81,6 +81,8 @@ class ParamPanel(QWidget):
         self.b_gap = _spin(0.0, 5000.0, 30.0, " ms", 5.0)
         self.b_block = _spin(0.0, 2000.0, 2.0, " ms", 0.5)
         self.b_cross = QCheckBox("基线上下穿越（多电平）")
+        self.b_occ = _spin(0.0, 1.0, 0.30, "", 0.05)
+        self.b_depth = _spin(0.0, 2.0, 0.15, "", 0.05)
 
         # --- mod checkboxes ---
         self.mod_boxes: dict[str, QCheckBox] = {}
@@ -160,6 +162,13 @@ class ParamPanel(QWidget):
         _tip(self.b_cross, "基线上下穿越（多电平）\n"
                            "把开孔电流两侧的偏离都算作同一事件。\n"
                            "用于电流在基线上下来回跳、甚至多电平的信号。默认关。")
+        _tip(self.b_occ, "最小占位率\n"
+                         "事件体内『确实阻孔』的样本占比低于它时，判为稀疏尖峰链而非事件。\n"
+                         "填空隙可能把尖峰之间的开孔也并进来，此门控防止凭空造事件。\n"
+                         "调大：更狠地滤尖峰链；调小：保留更稀疏的阻孔。")
+        _tip(self.b_depth, "最小体内偏离（×步长）\n"
+                           "即使占位率低，只要体内中位电流偏离开孔 ≥ 此比例 × 步长，\n"
+                           "仍保留——用于浅但持续的阻孔状态。")
 
         # ---------------- layout ----------------
         # 模块（可多选）
@@ -198,6 +207,8 @@ class ParamPanel(QWidget):
         bf.addRow("取样阈值 (×步长)", self.b_exit)
         bf.addRow("毛刺 / 开孔容差 (ms)", self.b_gap)
         bf.addRow("最短阻孔 (ms)", self.b_block)
+        bf.addRow("最小占位率", self.b_occ)
+        bf.addRow("最小体内偏离 (×步长)", self.b_depth)
         bf.addRow("", self.b_cross)
 
         self.lowpass_box = QGroupBox("低通滤波")
@@ -315,6 +326,8 @@ class ParamPanel(QWidget):
             burst_exit_frac=self.b_exit.value(),
             burst_min_gap_ms=self.b_gap.value(),
             burst_min_block_ms=self.b_block.value(),
+            burst_min_occupied_frac=self.b_occ.value(),
+            burst_min_depth_frac=self.b_depth.value(),
             burst_cross_baseline=self.b_cross.isChecked(),
             level_contribution=self.contrib.value(),
             min_toff_ms=self.min_toff.value(),
@@ -334,6 +347,8 @@ class ParamPanel(QWidget):
         self.b_exit.setValue(cfg.burst_exit_frac)
         self.b_gap.setValue(cfg.burst_min_gap_ms)
         self.b_block.setValue(cfg.burst_min_block_ms)
+        self.b_occ.setValue(cfg.burst_min_occupied_frac)
+        self.b_depth.setValue(cfg.burst_min_depth_frac)
         self.b_cross.setChecked(cfg.burst_cross_baseline)
         idx = self.event_mode.findData(cfg.event_mode)
         self.event_mode.setCurrentIndex(idx if idx >= 0 else 0)
