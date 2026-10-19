@@ -464,12 +464,19 @@ def detect_events_burst(
             continue
 
         # A run can span mostly open-pore samples when short gaps were filled
-        # between sparse spikes. Such a chain is not an event: require either a
-        # substantial blocked fraction, or a sustained (median) deflection.
+        # between sparse spikes. Such a train is not an event: require BOTH a
+        # substantial blocked fraction AND a sustained (median) deflection.
+        # Without the occupancy requirement, sub-threshold shallow excursions
+        # that only briefly poke above the entry threshold would survive.
         blocked_body = (np.abs(bd) > enter) if use_both else (sign * bd > enter)
         occupied = float(np.mean(blocked_body)) if blocked_body.size else 0.0
-        body_med = float(np.median(bd)) if bd.size else 0.0
-        if occupied < min_occupied_frac and abs(body_med) < min_depth_frac * step:
+        if use_both:
+            lo, hi = bd[bd < 0], bd[bd > 0]
+            body_depth = max(abs(float(np.median(lo))) if lo.size else 0.0,
+                             abs(float(np.median(hi))) if hi.size else 0.0)
+        else:
+            body_depth = abs(float(np.median(bd))) if bd.size else 0.0
+        if occupied < min_occupied_frac or body_depth < min_depth_frac * step:
             continue
 
         if use_both:

@@ -190,17 +190,21 @@ class ParamPanel(QWidget):
         # 参数（底座）
         base = QGroupBox("参数")
         form = QFormLayout(base)
-        form.addRow("尖峰抑制 (ms)", self.ignore)
-        form.addRow("事件合并容差 (ms)", self.ignore_event)
-        form.addRow("检测模式", self.event_mode)
         form.addRow("pre_event", self.pre)
-        form.addRow("Level contribution", self.contrib)
         form.addRow("最短事件时长 (ms)", self.min_toff)
-        form.addRow("事件平台占比 (0=关)", self.plateau)
         form.addRow("Label", self.lab)
         form.addRow(self.l0_en, self.l0)
         form.addRow(self.l1_en, self.l1)
         form.addRow("事件极性", self.polarity)
+        form.addRow("检测模式", self.event_mode)
+
+        # 电平法专用参数（burst 模式下不参与计算，故随之隐藏）
+        self.level_box = QGroupBox("电平法参数")
+        lf0 = QFormLayout(self.level_box)
+        lf0.addRow("尖峰抑制 (ms)", self.ignore)
+        lf0.addRow("事件合并容差 (ms)", self.ignore_event)
+        lf0.addRow("Level contribution", self.contrib)
+        lf0.addRow("事件平台占比 (0=关)", self.plateau)
 
         # 模块参数（随模块显隐）
         self.burst_box = QGroupBox("驻留包络去抖（burst）")
@@ -241,6 +245,7 @@ class ParamPanel(QWidget):
         lay = QVBoxLayout(self)
         lay.addWidget(modbox)
         lay.addWidget(base)
+        lay.addWidget(self.level_box)
         lay.addWidget(self.burst_box)
         lay.addWidget(self.lowpass_box)
         lay.addWidget(self.i0_box)
@@ -298,7 +303,9 @@ class ParamPanel(QWidget):
         self.refined_box.setVisible("refined_anomaly" in on)
 
     def _sync_mode(self) -> None:
-        self.burst_box.setVisible(self.event_mode.currentData() == "burst")
+        burst = self.event_mode.currentData() == "burst"
+        self.burst_box.setVisible(burst)
+        self.level_box.setVisible(not burst)
         self._save_settings()
 
     def _load_settings(self) -> None:
