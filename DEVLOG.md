@@ -98,6 +98,24 @@
 
 ---
 
+## [2026-10-19] 时长参数厘清 — ignore_duration vs min_toff；删一处死过滤
+
+用户质疑 GUI 里「Ignore duration」与「最短 toff」是否重复。核查结论：**语义不同，但表述易混**；并发现一处真的代码重复。
+
+**语义区别（实测：1.5 / 5 / 20 ms 三个阻孔）**
+- `ignore_duration_ms`（检测**前**，游程层）：短偏离被吸收，**不产生事件**。设 2 ms → 1.5 ms 阻孔直接消失；设 6 ms → 5 ms 也没了。对应 Clampfit "Ignore short level changes"，还会吸收**长事件内部**的短槽。
+- `min_toff_ms`（检测**后**，导出层）：已检出事件中 dwell ≤ 阈值的**剔除**，记 `toff<min`，仍可在剔除表追溯。设 10 ms → 只留 20 ms。
+
+**变更**
+- GUI 改名并加交叉说明 tooltip：「Ignore duration」→「**尖峰抑制 (ms)**」；「最短 toff (ms)」→「**最短事件时长 (ms)**」。README 参数表同步。不改行为。
+- 删除 `compute_features` 内已无人调用的 `min_toff_ms` 过滤（features.py）：生产路径早已改走 `classify_exclusions`，该参数仅被一个 backward-compat 测试使用。`tests/test_features.py` 改为只断言「compute_features 不按时长过滤」。
+
+**记录**：还有第三个时长参数 `ignore_event_duration_ms`（默认 50 ms，事件级 ignore，用于合并被短基线槽切碎的同电平事件）**未在 GUI 暴露**——它正是「毛刺型阻孔」的关键旋钮，宜与 burst 检测一起决定是否上提。
+
+**测试**：`python -m pytest -q` → **145 passed**。
+
+---
+
 ## [2026-10-19] GUI 布局重做 — 左表 / 中切片 / 点击联动（平移不改缩放）
 
 参考 `深度信号分析/npsweep/gui.py`（其自身即「借鉴自本项目」，本轮把演进收回来）。

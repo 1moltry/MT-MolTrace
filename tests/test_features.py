@@ -60,25 +60,13 @@ def test_despike_and_outlier_ratio():
     assert abs(row["mean"] + 50.0) < 2.0
 
 
-def test_min_toff_filter():
-    # compute_features with min_toff_ms=None (default) keeps ALL events; the
-    # export filter is applied by the caller (pipeline) as a drop_reason.
+def test_compute_features_does_not_filter_by_toff():
+    # compute_features never filters by duration; the dwell/export filter is a
+    # drop_reason applied by the caller (features.classify_exclusions).
     evs = [SynthEvent(1.0, 0.02, -50), SynthEvent(2.0, 0.005, -50)]  # 20ms + 5ms
     sig = make_signal(evs, duration_s=4.0, sample_rate_hz=25_000, noise_sigma_pA=0.5, seed=27)
     df = _feat(sig)
-    assert len(df) == 2  # filter no longer applied inside compute_features
-
-    # explicit min_toff_ms still filters (backward-compatible)
-    from nanopore.baseline import estimate_levels
-    from nanopore.detect import detect_events
-    from nanopore.features import compute_features
-
-    lv = estimate_levels(sig.current)
-    res = detect_events(sig.current, sig.sample_rate_hz, lv.level0, lv.level1,
-                        polarity=lv.polarity)
-    df2 = compute_features(res, sig.current, sig.sample_rate_hz, label="T", min_toff_ms=10.0)
-    assert len(df2) == 1
-    assert abs(df2.iloc[0]["toff"] - 20.0) < 0.5
+    assert len(df) == 2
 
 
 def test_drift_following_io():

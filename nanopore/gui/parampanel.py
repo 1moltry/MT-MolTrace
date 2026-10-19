@@ -82,17 +82,21 @@ class ParamPanel(QWidget):
             _tip(cb, tip)
             self.mod_boxes[mid] = cb
 
-        _tip(self.ignore, "Ignore duration（基线尖峰抑制）\n"
-                          "离开基线短于该时长的偏离不注册为事件（滤毛刺）。\n"
-                          "调大：更狠地滤短毛刺；调小：保留更短的偏离。")
+        _tip(self.ignore, "尖峰抑制（检测前 · Ignore duration）\n"
+                          "离开当前电平短于此值的『短暂偏离』被吸收，不注册为事件（滤毛刺）。\n"
+                          "例：设为 2 ms 时，一个 1.5 ms 的阻孔根本不会被检出。\n"
+                          "调大：更狠地滤短偏离；调小：保留更短的偏离。\n"
+                          "与下面『最短事件时长』不同：那是在事件检出『之后』再剔除。")
         _tip(self.pre, "pre_event（开孔电流参考窗）\n"
                         "事件前取多长一段作为开孔电流参考。\n"
                         "一般不用改；基线漂移明显时可略调。")
         _tip(self.contrib, "Level contribution（电平跟踪权重）\n"
                             "电平流式更新的步长比例。\n"
                             "调大：电平跟随快、对噪声敏感；调小：更稳但滞后。")
-        _tip(self.min_toff, "最短 toff（dwell 过滤，仅导出）\n"
-                             "dwell 短于该值的事件不进保留表（记入 excluded）。\n"
+        _tip(self.min_toff, "最短事件时长（仅导出 · min toff）\n"
+                             "已检出事件中，dwell ≤ 此值的不进保留表，改记入剔除表（reason=toff<min）。\n"
+                             "与『尖峰抑制』的区别：尖峰抑制在检测『前』让短偏离根本不成为事件；\n"
+                             "这里是在检出『之后』按事件总时长过滤，被剔的仍可追溯。\n"
                              "短肽事件（毫秒级）需调小，如 2 ms。")
         _tip(self.plateau, "事件平台占比下限（毛刺/闪烁门控）\n"
                             "事件体驻留单一电平（最近整数电平 ±0.5 步）的样本占比低于此值\n"
@@ -144,10 +148,10 @@ class ParamPanel(QWidget):
         # 参数（底座）
         base = QGroupBox("参数")
         form = QFormLayout(base)
-        form.addRow("Ignore duration", self.ignore)
+        form.addRow("尖峰抑制 (ms)", self.ignore)
         form.addRow("pre_event", self.pre)
         form.addRow("Level contribution", self.contrib)
-        form.addRow("最短 toff (ms)", self.min_toff)
+        form.addRow("最短事件时长 (ms)", self.min_toff)
         form.addRow("事件平台占比 (0=关)", self.plateau)
         form.addRow("Label", self.lab)
         form.addRow(self.l0_en, self.l0)

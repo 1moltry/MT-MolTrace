@@ -151,7 +151,7 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 
 | 参数 | 含义 | 默认 |
 |------|------|------|
-| `ignore_duration_ms` | 基线电平上下文：偏离基线短于此时长的尖峰抑制（不注册为事件） | 2 ms |
+| `ignore_duration_ms` | **尖峰抑制（检测前）**：离开电平短于此时长的短暂偏离被吸收，不产生事件 | 2 ms |
 | `ignore_event_duration_ms` | 事件电平上下文：同电平事件之间基线间隙短于此时长的合并为一个事件（长阻孔内的噪声槽不切碎） | 50 ms |
 | `level_contribution` | 电平跟踪的指数更新权重 | 0.10 |
 | `dwell_min_frac` | 尖峰抑制：事件 body 需 ≥30% 样本落在某电平邻域 | 0.30 |
@@ -161,7 +161,7 @@ y = categorical(T.Label);          % 分类目标（物种/样本）
 | 电平中点阈值 | 50% crossing（两电平中点） | — |
 | 短事件判定（brief） | < 4τ（滤波时间常数），State 列标 B | 自动 |
 | `pre_event_ms` | 特征提取的开孔电流窗口（与特征表规范一致） | 25 ms |
-| `min_toff_ms` | 导出过滤：保留 toff > 阈值的事件 | 10 ms |
+| `min_toff_ms` | **最短事件时长（仅导出）**：已检出事件中 dwell ≤ 此值的进剔除表（`toff<min`） | 10 ms |
 | `hold_voltage_mV` | 电压 protocol 的保持电平；不给则取电压轨迹中位数 | 自动 |
 | `refined_drift_enabled` | **慢漂移/不稳定区间检测**（新 kind `baseline_drift`）：缓慢、**不可逆**、且伴随高散布的开孔电平位移（如 TRP 尾部基线抬升 + 炸膜）。需位移**且**不稳定两个键同时满足——稳定的孔态阶跃、可恢复的瞬态、以及"位移但仍在出正常事件"的良性漂移都不会误报 | 开 |
 | `refined_drift_min_frac` | 位移键：块中值偏离记录头锚点 ≥ 此比例 ×\|锚点\| | 0.05 |

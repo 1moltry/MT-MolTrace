@@ -73,7 +73,6 @@ def compute_features(
     pre_event_ms: float = 25.0,
     after_event_ms: float = 0.8,
     dr_pA: float = 5.0,
-    min_toff_ms: float | None = None,
     i0_profile=None,
 ) -> pd.DataFrame:
     """Build the per-event feature table for one recording.
@@ -186,11 +185,4 @@ def compute_features(
         ton = np.full(len(df), np.nan)
         ton[:-1] = starts[1:] - ends[:-1]
         df["ton"] = ton * 1e3  # ms
-
-        # Export filter (keep toff > min_toff_ms). Moved to the caller
-        # as an exclusion reason; here we only filter when explicitly asked,
-        # so callers that annotate drop reasons get the full table first.
-        if min_toff_ms is not None:
-            keep = df["toff"] > min_toff_ms
-            df = df[keep].reset_index(drop=True)
     return df
