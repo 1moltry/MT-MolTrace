@@ -104,7 +104,7 @@
 
 **变更**：包版本 `2.0.0` → `2.0.1`（`pyproject.toml`、`nanopore/__init__.py`）；发行包名为 `SDL纳米孔分析_v2.0.1_win64.zip`。内容包含 burst 开孔判定修复（`f86404b`）与 GUI 布局/右键框选（`6ce8b8b`）。
 
-**测试**：全量 `pytest` 183 passed；exe 重建并校验。
+**测试**：全量 `pytest` 183 passed；exe 重建并校验（`SDL纳米孔分析_v2.0.1_win64.zip`，106 MB）。
 
 **下一步**：推送 `main`。
 
