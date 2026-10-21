@@ -5,4 +5,4 @@ baseline/level estimation, anomaly detection, feature extraction (column names
 follow the lab feature-table spec), and plotting.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
