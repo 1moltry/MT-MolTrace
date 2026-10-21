@@ -106,9 +106,9 @@
 - 包版本 `0.1.0` → `2.0.0`（`pyproject.toml`、`nanopore/__init__.py`）；发行包名随之为 `SDL纳米孔分析_v2.0.0_win64.zip`。
 - README / CONTRIBUTING / LICENSE / pyproject 的作者统一为「Huang Lab 的 Yize Liu（1moltry）」，移除早期共同作者署名。未改写 git 历史与本文件旧条目；未新建 git 标签，避免与既有 `v1` / `v2` 混淆。
 
-**测试**：全量 `pytest` 170 passed；重建 exe 后实跑验证。
+**测试**：全量 `pytest` 170 passed；exe 重建成功，zip 校验通过（`SDL纳米孔分析_v2.0.0_win64.zip`，250 MB 解压 / 106 MB 压缩），包内 README/LICENSE 已核为新署名。
 
-**下一步**：推送 `main`；如需发布，另行创建 `v2.0.0` 标签与 Release。
+**下一步**：已推送 `main`；如需发布，另行创建 `v2.0.0` 标签与 Release。
 
 ---
 
