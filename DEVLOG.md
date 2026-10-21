@@ -106,8 +106,9 @@
 - README 改为门外汉路径：GitHub Releases 下载 → 解压 → 首次启动 → 5 分钟上手 → 输出说明 → 常见问题；明确 exe 与 `_internal` 必须同目录。
 - 新增 `tutorial.md`：安装、界面、事件表列含义、异常与剔除、电平法/burst 参数、模块、统计图、批量处理、输出文件、MATLAB、推荐工作流、故障排查、FAQ、术语表。
 - 修复统计散点点击接线（`sigClicked` 之前未连接）；批量完成提示不再固定声称生成 `summary.xlsx`。
+- 发行包附带 `tutorial.md`，README 的相对链接在解压目录内可用。
 
-**测试**：全量 `pytest` 184 passed（新增散点点击接线用例）。
+**测试**：全量 `pytest` 184 passed（新增散点点击接线用例）；v2.0.1 exe 重建，zip 已包含 README、LICENSE 与 tutorial.md。
 
 **下一步**：在 GitHub 网页创建 `v2.0.1` Release，上传 `release/SDL纳米孔分析_v2.0.1_win64.zip`；README 的下载路径才生效。
 
