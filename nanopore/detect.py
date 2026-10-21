@@ -412,11 +412,11 @@ def detect_events_burst(
       1. blocked(t) = departure from ``level0`` beyond ``enter_frac * step``.
          One side per ``polarity``; both sides when ``polarity == 0`` or
          ``cross_baseline`` is set (multi-level / baseline-crossing signals).
-      2. fill non-blocked gaps shorter than ``min_gap_ms`` — absorbs brief
+      2. drop blocked fragments shorter than ``min_block_ms`` — a lone spike
+         does not create an event, and cannot bridge two separate events.
+      3. fill non-blocked gaps shorter than ``min_gap_ms`` — absorbs brief
          returns to, or overshoots past, the open pore, so one dwell is not
          cut into pieces; also merges a baseline-hopping burst.
-      3. drop blocked fragments shorter than ``min_block_ms`` — a lone spike
-         does not create an event.
       4. each surviving blocked run is one event; its level is the median of
          samples beyond ``exit_frac * step`` on the dominant side.
 
@@ -448,8 +448,10 @@ def detect_events_burst(
     sign = 0.0 if use_both else (1.0 if level1 > level0 else -1.0)
     blocked = np.abs(d) > enter if use_both else (sign * d) > enter
 
-    blocked = _fill_short_gaps(blocked, min_gap_n)
+    # Debris first: a short blip inside a long gap must not be filled over,
+    # or it would stitch two separate events into one.
     blocked = _drop_short_blocks(blocked, min_block_n)
+    blocked = _fill_short_gaps(blocked, min_gap_n)
 
     events: list[Event] = []
     for s, e in _runs_of(blocked, True):

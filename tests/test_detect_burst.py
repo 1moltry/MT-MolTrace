@@ -98,6 +98,19 @@ def test_lone_spike_is_dropped():
     assert len(r.events) == 0
 
 
+def test_spike_inside_gap_does_not_bridge_events():
+    # A debris spike shorter than min_block must be removed BEFORE gap filling;
+    # otherwise it splits the 50 ms return into two <30 ms halves and the
+    # morphological closing stitches both events into one.
+    cur = _sig()
+    _set(cur, 0.10, 0.30, 40.0)                  # first blockade
+    _set(cur, 0.35, 0.55, 40.0)                  # second, 50 ms later
+    _set(cur, 0.3245, 0.3255, 75.0)              # 1 ms blip inside the gap
+    r = _burst(cur, min_gap_ms=30, min_block_ms=2)
+    assert len(r.events) == 2
+    assert [round(e.start_s, 2) for e in r.events] == [0.10, 0.35]
+
+
 def test_sparse_spike_chain_is_not_an_event():
     # short dips separated by open gaps < min_gap: gap-filling would otherwise
     # manufacture one long "event" whose body is almost entirely open pore.
