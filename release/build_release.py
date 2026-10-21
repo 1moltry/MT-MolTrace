@@ -283,7 +283,7 @@ def assemble() -> Path:
     pkg_app = PACKAGE / EXE_NAME
     shutil.copytree(app_dir, pkg_app)
 
-    for doc in ("README.md", "LICENSE"):
+    for doc in ("README.md", "LICENSE", "tutorial.md"):
         src = STAGE / doc
         if src.exists():
             shutil.copy2(src, pkg_app / doc)
