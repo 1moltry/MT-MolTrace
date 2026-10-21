@@ -84,6 +84,8 @@ class ParamPanel(QWidget):
         self.b_enter = _spin(0.0, 2.0, 0.30, "", 0.05)
         self.b_exit = _spin(0.0, 2.0, 0.20, "", 0.05)
         self.b_gap = _spin(0.0, 5000.0, 30.0, " ms", 5.0)
+        self.b_open = _spin(0.0, 1.0, 0.75, "", 0.05)
+        self.b_merge = _spin(0.0, 5000.0, 200.0, " ms", 10.0)
         self.b_block = _spin(0.0, 2000.0, 2.0, " ms", 0.5)
         self.b_cross = QCheckBox("基线上下穿越（多电平）")
         self.b_occ = _spin(0.0, 1.0, 0.30, "", 0.05)
@@ -168,10 +170,20 @@ class ParamPanel(QWidget):
                           "例：步长 80 pA、比例 0.20 → 只用偏离超过 16 pA 的样本。")
         _tip(self.b_gap, "开孔回落容差（ms）· 主调钮\n"
                          "两次阻孔之间，回落时长小于它 → 仍算同一个事件。\n"
-                         "注意：这里量的是『电流回到距开孔不超过判定阈值』的连续时长，\n"
-                         "不是肉眼看到回到基线的时长；间隙中间出现超过判定阈值的\n"
-                         "毛刺，也会中断计时。\n"
+                         "配合『开孔判定比例』：时长和开孔时间占比都满足，才切断事件。\n"
+                         "注意：这里量的是阈值域时长，不是肉眼看到回到基线的时长。\n"
                          "调大：更不易切碎，但可能并掉相邻真事件；调小：更接近逐次开合。")
+        _tip(self.b_open, "开孔判定比例\n"
+                          "间隙里至少这么大比例的时间落在『阻孔判定阈值』范围内，\n"
+                          "才算真的回到开孔、允许切断事件。\n"
+                          "判定带与阻孔判定阈值共用同一个 ×步长 比例，不另设电流比例。\n"
+                          "例：0.75 = 间隙中 ≥75% 的时间必须在 ±判定阈值 内；\n"
+                          "低于它（短暂 flicker、残余电平）就并入同一事件。\n"
+                          "调大：更多浅回落被合并；调小：更容易切开。")
+        _tip(self.b_merge, "最长合并间隙（ms）\n"
+                           "没真正回到开孔时，只合并不超过这个时长的间隙；\n"
+                           "更长的浅态保留为独立事件。\n"
+                           "避免把 10 s 级的另一孔态吞进同一事件。0 = 不合并。")
         _tip(self.b_block, "最短阻孔时长（ms）\n"
                            "短于它的阻孔碎片先被丢弃：既不新建事件，\n"
                            "也不会用来桥接相邻事件。\n"
@@ -236,6 +248,8 @@ class ParamPanel(QWidget):
         bf.addRow("阻孔判定阈值 (×步长)", self.b_enter)
         bf.addRow("事件幅值取样下限 (×步长)", self.b_exit)
         bf.addRow("开孔回落容差 (ms)", self.b_gap)
+        bf.addRow("开孔判定比例", self.b_open)
+        bf.addRow("最长合并间隙 (ms)", self.b_merge)
         bf.addRow("最短阻孔时长 (ms)", self.b_block)
         bf.addRow("最小占位率", self.b_occ)
         bf.addRow("最小体内偏离 (×步长)", self.b_depth)
@@ -288,7 +302,8 @@ class ParamPanel(QWidget):
         # any option edit asks the main window for a debounced auto-rerun
         for w in (self.ignore, self.ignore_event, self.contrib, self.plateau,
                   self.pre, self.min_toff, self.lowpass, self.dr,
-                  self.b_enter, self.b_exit, self.b_gap, self.b_block,
+                  self.b_enter, self.b_exit, self.b_gap, self.b_open,
+                  self.b_merge, self.b_block,
                   self.b_occ, self.b_depth, self.drift_frac, self.drift_iqr,
                   self.l0, self.l1):
             w.valueChanged.connect(self._emit_changed)
@@ -404,6 +419,8 @@ class ParamPanel(QWidget):
             burst_exit_frac=self.b_exit.value(),
             burst_min_gap_ms=self.b_gap.value(),
             burst_min_block_ms=self.b_block.value(),
+            burst_open_cover=self.b_open.value(),
+            burst_merge_max_ms=self.b_merge.value(),
             burst_min_occupied_frac=self.b_occ.value(),
             burst_min_depth_frac=self.b_depth.value(),
             burst_cross_baseline=self.b_cross.isChecked(),
@@ -424,6 +441,8 @@ class ParamPanel(QWidget):
         self.b_enter.setValue(cfg.burst_enter_frac)
         self.b_exit.setValue(cfg.burst_exit_frac)
         self.b_gap.setValue(cfg.burst_min_gap_ms)
+        self.b_open.setValue(cfg.burst_open_cover)
+        self.b_merge.setValue(cfg.burst_merge_max_ms)
         self.b_block.setValue(cfg.burst_min_block_ms)
         self.b_occ.setValue(cfg.burst_min_occupied_frac)
         self.b_depth.setValue(cfg.burst_min_depth_frac)

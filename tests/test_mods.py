@@ -228,6 +228,22 @@ def test_gui_remembers_detection_mode_and_params(monkeypatch):
     assert restored.b_gap.value() == 123.0
 
 
+def test_gui_burst_open_rule_roundtrip(monkeypatch):
+    panel = _panel(monkeypatch)
+    panel.b_open.setValue(0.80)
+    panel.b_merge.setValue(150.0)
+    cfg = panel.build_config()
+    assert cfg.burst_open_cover == 0.80
+    assert cfg.burst_merge_max_ms == 150.0
+    panel._save_settings()
+
+    from nanopore.gui import parampanel as pp
+
+    restored = pp.ParamPanel()
+    assert restored.b_open.value() == 0.80
+    assert restored.b_merge.value() == 150.0
+
+
 def test_gui_emits_changed_on_option_edit(monkeypatch):
     panel = _panel(monkeypatch)
     got = []

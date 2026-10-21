@@ -64,6 +64,37 @@ def test_return_longer_than_gap_splits():
     assert len(lvl.events) == 2
 
 
+def test_partial_recovery_does_not_split():
+    # A 50 ms gap that hovers near 85 pA (15 pA from baseline, inside the
+    # 18 pA entry band) but is interrupted by 1.5 ms blocked blips. The
+    # blips are debris (< min_block), so the gap survives segmentation, yet
+    # only ~70% of it is genuinely in the open band (< open_cover=0.75).
+    cur = _sig()
+    _set(cur, 0.10, 0.30, 40.0)
+    _set(cur, 0.30, 0.35, 85.0)
+    for k in range(10):
+        t0 = 0.302 + k * 0.005
+        _set(cur, t0, t0 + 0.0015, 40.0)
+    _set(cur, 0.35, 0.55, 40.0)
+    merged = _burst(cur, min_gap_ms=30)
+    split = _burst(cur, min_gap_ms=30, open_cover=0.60)
+    assert len(merged.events) == 1
+    assert len(split.events) == 2
+    assert merged.events[0].start_s == pytest.approx(0.10, abs=1e-3)
+    assert merged.events[0].end_s == pytest.approx(0.55, abs=1e-3)
+
+
+def test_merge_max_caps_long_partial_gaps():
+    cur = _sig()
+    _set(cur, 0.10, 0.30, 40.0)
+    _set(cur, 0.30, 0.65, 130.0)                 # 350 ms above open (not open band)
+    _set(cur, 0.65, 0.85, 40.0)
+    short = _burst(cur, min_gap_ms=30, merge_max_ms=200)
+    long = _burst(cur, min_gap_ms=30, merge_max_ms=500)
+    assert len(short.events) == 2
+    assert len(long.events) == 1
+
+
 # ---- multi-level / baseline crossing -----------------------------------
 def test_cross_baseline_merges_both_sides():
     cur = _sig()
@@ -73,7 +104,11 @@ def test_cross_baseline_merges_both_sides():
     both = _burst(cur, cross_baseline=True, min_gap_ms=30)
     one_side = _burst(cur, cross_baseline=False, min_gap_ms=30)
     assert len(both.events) == 1                 # one crossing event
-    assert len(one_side.events) == 2             # the above-baseline stretch splits it
+    # the above-baseline stretch is outside the open band, so the default
+    # merge pass joins the two downward episodes as well
+    assert len(one_side.events) == 1
+    split = _burst(cur, cross_baseline=False, min_gap_ms=30, merge_max_ms=0)
+    assert len(split.events) == 2                # disabling the merge restores the split
 
 
 def test_cross_baseline_is_off_by_default():

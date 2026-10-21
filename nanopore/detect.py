@@ -398,6 +398,8 @@ def detect_events_burst(
     exit_frac: float = 0.20,
     min_gap_ms: float = 30.0,
     min_block_ms: float = 2.0,
+    open_cover: float = 0.75,
+    merge_max_ms: float = 200.0,
     cross_baseline: bool = False,
     baseline: np.ndarray | None = None,
     min_occupied_frac: float = 0.30,
@@ -419,6 +421,13 @@ def detect_events_burst(
          cut into pieces; also merges a baseline-hopping burst.
       4. each surviving blocked run is one event; its level is the median of
          samples beyond ``exit_frac * step`` on the dominant side.
+      5. adjacent events merge across a short gap that is *not* genuinely open:
+         the gap must be at most ``merge_max_ms`` long and less than
+         ``open_cover`` of it may lie within the entry band
+         (``+/- enter_frac * step``). A partial recovery / flicker that never
+         reaches the open-pore level therefore stays inside one event; a
+         sustained return to open still splits. ``open_cover=0`` disables the
+         merge pass, ``merge_max_ms=0`` disables it too.
 
     ``min_gap_ms`` is the burst-grouping threshold: smaller splits a burst into
     one event per opening; larger merges more excursions. Events touching the
@@ -439,6 +448,9 @@ def detect_events_burst(
     exit_ = exit_frac * step
     min_gap_n = max(1, int(round(min_gap_ms * 1e-3 * sample_rate_hz)))
     min_block_n = max(1, int(round(min_block_ms * 1e-3 * sample_rate_hz)))
+    open_cover = float(np.clip(open_cover, 0.0, 1.0))
+    merge_max_n = (0 if merge_max_ms <= 0
+                   else max(1, int(round(merge_max_ms * 1e-3 * sample_rate_hz))))
 
     # reference open-pore current per sample: a dynamic baseline when supplied
     # (follows pore-state switches / drift), else the constant level0
@@ -453,17 +465,14 @@ def detect_events_burst(
     blocked = _drop_short_blocks(blocked, min_block_n)
     blocked = _fill_short_gaps(blocked, min_gap_n)
 
-    events: list[Event] = []
-    for s, e in _runs_of(blocked, True):
-        if s == 0 or e == n:          # touches a record boundary: extent unknown
-            continue
+    def _event_at(s: int, e: int) -> Event | None:
         m = e - s
         if trim > 0 and m > 2 * trim:
             body, bd = current[s + trim:e - trim], d[s + trim:e - trim]
         else:
             body, bd = current[s:e], d[s:e]
         if body.size == 0:
-            continue
+            return None
 
         # A run can span mostly open-pore samples when short gaps were filled
         # between sparse spikes. Such a train is not an event: require BOTH a
@@ -479,7 +488,7 @@ def detect_events_burst(
         else:
             body_depth = abs(float(np.median(bd))) if bd.size else 0.0
         if occupied < min_occupied_frac or body_depth < min_depth_frac * step:
-            continue
+            return None
 
         if use_both:
             below, above = bd < -exit_, bd > exit_
@@ -498,7 +507,7 @@ def detect_events_burst(
         depth = amp - local0
         level = int(np.clip(round(depth / step), -8, 8))
         state = "B" if m < brief_len else "A"
-        events.append(Event(
+        return Event(
             start_s=s * dt,
             end_s=e * dt,
             amplitude_pA=amp,
@@ -506,7 +515,40 @@ def detect_events_burst(
             level0_ref_pA=local0,
             level=level,
             state=state,
-        ))
+        )
+
+    raw: list[tuple[int, int, Event]] = []
+    for s, e in _runs_of(blocked, True):
+        if s == 0 or e == n:          # touches a record boundary: extent unknown
+            continue
+        ev = _event_at(s, e)
+        if ev is not None:
+            raw.append((s, e, ev))
+
+    # A gap only splits the burst when it is genuinely open: at least
+    # ``open_cover`` of it sits inside the entry band. A brief flicker or a
+    # residual sub-level that never reaches the open pore stays one event.
+    groups: list[list[tuple[int, int, Event]]] = []
+    for item in raw:
+        if groups:
+            e0 = groups[-1][-1][1]
+            gap_n = item[0] - e0
+            if (merge_max_n > 0 and 0 < gap_n <= merge_max_n
+                    and float(np.mean(np.abs(d[e0:item[0]]) <= enter)) < open_cover):
+                groups[-1].append(item)
+                continue
+        groups.append([item])
+
+    events: list[Event] = []
+    for grp in groups:
+        if len(grp) == 1:
+            events.append(grp[0][2])
+            continue
+        merged = _event_at(grp[0][0], grp[-1][1])
+        if merged is not None:
+            events.append(merged)
+        else:                          # merged body fails the gates: keep parts
+            events.extend(x[2] for x in grp)
 
     level0_refs = np.array([ev.level0_ref_pA for ev in events])
     return DetectionResult(events, levels, sample_rate_hz, float(level0), level0_refs)
@@ -532,6 +574,8 @@ def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
             exit_frac=cfg.burst_exit_frac,
             min_gap_ms=cfg.burst_min_gap_ms,
             min_block_ms=cfg.burst_min_block_ms,
+            open_cover=cfg.burst_open_cover,
+            merge_max_ms=cfg.burst_merge_max_ms,
             cross_baseline=cfg.burst_cross_baseline,
             baseline=i0_profile.baseline if i0_profile is not None else None,
             min_occupied_frac=cfg.burst_min_occupied_frac,

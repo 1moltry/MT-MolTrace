@@ -56,6 +56,11 @@ class PipelineConfig:
     burst_exit_frac: float = 0.20      # burst: amplitude read from samples beyond this*step
     burst_min_gap_ms: float = 30.0     # burst: returns to open shorter than this do NOT split
     burst_min_block_ms: float = 2.0    # burst: blocked fragments shorter than this are dropped
+    burst_open_cover: float = 0.75     # burst: a gap only splits when at least this fraction
+                                       # of it lies within +/-enter_frac*step of the open
+                                       # level; otherwise adjacent events merge
+    burst_merge_max_ms: float = 200.0  # burst: only merge non-open gaps up to this long
+                                       # (longer shallow states stay separate events)
     burst_cross_baseline: bool = False  # burst: departures on EITHER side of I0 count as
                                        # one event (multi-level / baseline-crossing signals)
     burst_min_occupied_frac: float = 0.30  # burst: reject an event whose body is actually

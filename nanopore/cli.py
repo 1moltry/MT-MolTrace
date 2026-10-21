@@ -48,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="burst: returns to open shorter than this do NOT split (default 30 ms)")
     r.add_argument("--burst-min-block-ms", type=float, default=None,
                    help="burst: blocked fragments shorter than this are dropped (default 2 ms)")
+    r.add_argument("--burst-open-cover", type=float, default=None,
+                   help="burst: a gap splits only when at least this fraction of it lies "
+                        "within +/-enter-frac of the open level (default 0.75)")
+    r.add_argument("--burst-merge-max-ms", type=float, default=None,
+                   help="burst: only merge non-open gaps up to this long (default 200 ms; "
+                        "0 disables merging)")
     r.add_argument("--burst-cross-baseline", action="store_true",
                    help="burst: departures on EITHER side of the open pore count as one "
                         "event (multi-level / baseline-crossing signals)")
@@ -98,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
                          ("burst_exit_frac", args.burst_exit_frac),
                          ("burst_min_gap_ms", args.burst_min_gap_ms),
                          ("burst_min_block_ms", args.burst_min_block_ms),
+                         ("burst_open_cover", args.burst_open_cover),
+                         ("burst_merge_max_ms", args.burst_merge_max_ms),
                          ("burst_min_occupied_frac", args.burst_min_occupied_frac),
                          ("burst_min_depth_frac", args.burst_min_depth_frac)):
         if value is not None:
