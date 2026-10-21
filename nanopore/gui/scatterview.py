@@ -68,6 +68,7 @@ class ScatterView(QWidget):
         self.s2 = pg.ScatterPlotItem(
             size=6, pen=None, brush=pg.mkBrush(*POINT_COLOR))
         self.p2.addItem(self.s2)
+        self.s2.sigClicked.connect(self._click)
 
         hist_row = QVBoxLayout()
         hist_row.setContentsMargins(4, 2, 4, 0)

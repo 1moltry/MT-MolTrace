@@ -136,6 +136,16 @@ def test_scatter_point_count_and_click_signal(qapp):
     view.highlight(3)
 
 
+def test_scatter_click_is_wired(qapp):
+    view = ScatterView()
+    view.set_data(_df())
+    got = []
+    bus.event_selected.connect(got.append)
+    spots = view.s2.points()[0]
+    view.s2.sigClicked.emit(view.s2, [spots], None)
+    assert got == [0]
+
+
 def test_histogram_bars_are_visible(qapp):
     """Guards the transparent-brush regression: pyqtgraph's mkBrush reads a
     float 4-tuple as a colour *width*, so ``mkBrush(0.12, 0.47, 0.71, 0.85)``

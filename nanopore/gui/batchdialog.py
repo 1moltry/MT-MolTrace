@@ -186,7 +186,7 @@ class BatchDialog(QDialog):
 
     def _on_done(self, reports) -> None:
         ok = sum(1 for r in reports if not getattr(r, "error", ""))
-        self._log(f"完成：{ok}/{len(reports)} 个文件成功；汇总表 summary.xlsx 已写入输出目录")
+        self._log(f"完成：{ok}/{len(reports)} 个文件成功；结果已写入输出目录")
         self.run_btn.setEnabled(True)
 
     def _on_failed(self, msg: str) -> None:
