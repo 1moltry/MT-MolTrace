@@ -12,7 +12,8 @@ how the base detector works: ``polarity``, ``event_mode`` (``level``/``burst``),
 ``event_plateau_min_frac`` (glitch gate), ``ignore_duration_ms`` and friends.
 
 Add a feature by adding one :class:`ModSpec` here; the GUI renders a checkbox
-from it and the CLI resolves ids through :func:`resolve_mods`.
+from it (grouped into tabs by :data:`CATEGORIES`) and the CLI resolves ids
+through :func:`resolve_mods`.
 """
 
 from __future__ import annotations
@@ -26,9 +27,20 @@ class ModSpec:
     id: str
     label: str                     # Chinese display name (GUI)
     desc: str                      # one-line description (GUI tooltip)
+    category: str = "output"       # display group (see CATEGORIES)
     default_on: bool = False       # initial checkbox state on a fresh install
     requires: tuple[str, ...] = ()  # prerequisite mod ids
     params: tuple[str, ...] = ()    # PipelineConfig fields this mod consumes
+
+
+# Display groups for the GUI. ORDER stays the dependency/processing order; this
+# tuple only decides how the checkboxes are grouped into tabs.
+CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("preprocess", "预处理"),
+    ("detect", "异常检测"),
+    ("output", "单文件输出"),
+    ("batch", "批次输出"),
+)
 
 
 ORDER: tuple[str, ...] = (
@@ -46,22 +58,26 @@ MODS: dict[str, ModSpec] = {m.id: m for m in (
     ModSpec(
         "lowpass", "低通滤波",
         "检测前做零相位低通（需在参数里设截止频率；0=不比滤波）",
+        category="preprocess",
         params=("filter_lowpass_hz",),
     ),
     ModSpec(
         "dynamic_i0", "动态开孔基线",
         "逐事件 Io 跟随开孔电流漂移，免疫长阻孔被误当开孔",
+        category="preprocess",
         params=("dr_pA",),
     ),
     ModSpec(
         "anomaly", "异常检测（宏）",
         "反压/膜抖/炸膜/慢漂移区间，并剔除落在其中的事件",
+        category="detect",
         params=("jump_min_ms", "noise_sigma_mult", "jitter_min_ms",
                 "refined_jitter_level_frac_max"),
     ),
     ModSpec(
         "refined_anomaly", "异常检测（细粒度）",
         "分级异常判据：反压恢复（spontaneous/manual）、轻/重膜抖、炸膜",
+        category="detect",
         requires=("anomaly", "dynamic_i0"),
         params=(
             "refined_jitter_window_ms", "refined_jitter_mild_ratio",
@@ -74,12 +90,16 @@ MODS: dict[str, ModSpec] = {m.id: m for m in (
             "refined_drift_step_pA", "refined_drift_rupture_ratio",
         ),
     ),
-    ModSpec("plots", "输出图", "overview / scatter / hist 三张 PNG"),
+    ModSpec("plots", "输出图", "overview / scatter / hist 三张 PNG",
+            category="output"),
     ModSpec("waveform_export", "事件波形导出",
-            "每个保留事件的原始电流序列 → <name>_events.mat"),
+            "每个保留事件的原始电流序列 → <name>_events.mat",
+            category="output"),
     ModSpec("dataset_export", "合并训练表",
-            "所有文件的保留事件纵向拼接（dataset_all.csv）"),
-    ModSpec("summary", "批次汇总", "每文件事件数/有效率/异常计数（summary.xlsx）"),
+            "所有文件的保留事件纵向拼接（dataset_all.csv）",
+            category="batch"),
+    ModSpec("summary", "批次汇总", "每文件事件数/有效率/异常计数（summary.xlsx）",
+            category="batch"),
 )}
 
 

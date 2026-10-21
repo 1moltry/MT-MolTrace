@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QRectF, Qt, QTimer
 from PyQt5.QtWidgets import (
     QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget)
 
@@ -41,6 +41,11 @@ TRACE_COLOR = "#333333"
 EVENT_COLOR = "#1f77b4"
 
 
+def _drag_rect_ok(p1, p2, min_px: float = 5.0) -> bool:
+    """A rubber-band rectangle needs a real span on both axes."""
+    return abs(p2.x() - p1.x()) >= min_px and abs(p2.y() - p1.y()) >= min_px
+
+
 class WaveView(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -50,6 +55,7 @@ class WaveView(QWidget):
         self._tax = TimeAxis(orientation="bottom")
         self.plot = pg.PlotWidget(axisItems={"bottom": self._tax})
         self.plot.setBackground("w")
+        self.plot.getPlotItem().setMenuEnabled(False)   # right-drag is zoom, not a menu
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.setLabel("bottom", "时间", units="s")
         self.plot.setLabel("left", "电流", units="pA")
@@ -118,6 +124,7 @@ class WaveView(QWidget):
         self.btn_clear_roi.clicked.connect(self.clear_roi)
         bus.roi_finished.connect(self._on_roi_finished)
         self._install_click()
+        self._install_right_zoom()
 
     # ---- cursor (ROI) -----------------------------------------------------
     def toggle_roi(self) -> None:
@@ -357,6 +364,31 @@ class WaveView(QWidget):
             return orig(ev)
 
         vb.mouseClickEvent = handler
+
+    # ---- right-drag zoom --------------------------------------------------
+    def _install_right_zoom(self) -> None:
+        """Right-drag a rectangle → zoom the main view to that region."""
+        vb = self.plot.getViewBox()
+        orig = vb.mouseDragEvent
+
+        def handler(ev, axis=None):
+            if ev.button() != Qt.RightButton or axis is not None:
+                return orig(ev, axis)
+            ev.accept()
+            p0, p1 = ev.buttonDownPos(), ev.pos()
+            if ev.isFinish():
+                vb.rbScaleBox.hide()
+                if _drag_rect_ok(p0, p1):
+                    ax = vb.childGroup.mapRectFromParent(QRectF(p0, p1))
+                    vb.showAxRect(ax, padding=0)
+                    vb.axHistoryPointer += 1
+                    vb.axHistory = vb.axHistory[:vb.axHistoryPointer] + [ax]
+            elif _drag_rect_ok(p0, p1):
+                vb.updateScaleBox(p0, p1)
+            else:
+                vb.rbScaleBox.hide()
+
+        vb.mouseDragEvent = handler
 
     def _click_select(self, x_s: float) -> None:
         if self._df is None or len(self._df) == 0:

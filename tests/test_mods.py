@@ -9,7 +9,7 @@ import pytest
 
 from nanopore.analyze import analyze
 from nanopore.config import PipelineConfig
-from nanopore.mods import MODS, ORDER, all_mods, resolve_mods
+from nanopore.mods import CATEGORIES, MODS, ORDER, all_mods, resolve_mods
 from tests.synth import SynthEvent, make_signal
 
 
@@ -25,6 +25,16 @@ def test_registry_integrity():
             assert dep in MODS, f"{mid} requires unknown {dep}"
         for p in spec.params:
             assert p in valid_params, f"{mid} references non-config param {p}"
+
+
+def test_categories_cover_registry():
+    ids = [cid for cid, _ in CATEGORIES]
+    assert len(ids) == len(set(ids))
+    known = dict(CATEGORIES)
+    for mid in ORDER:
+        assert MODS[mid].category in known, f"{mid} has unknown category"
+    for cid in ids:
+        assert any(MODS[mid].category == cid for mid in ORDER), f"{cid} is empty"
 
 
 def test_resolve_adds_dependencies_in_order():
@@ -226,3 +236,38 @@ def test_gui_emits_changed_on_option_edit(monkeypatch):
     panel.event_mode.setCurrentIndex(panel.event_mode.findData("burst"))
     panel.mod_boxes["plots"].setChecked(True)     # module toggle
     assert len(got) >= 3
+
+
+def test_gui_modules_are_grouped_into_tabs(monkeypatch):
+    from PyQt5.QtWidgets import QCheckBox
+
+    panel = _panel(monkeypatch)
+    assert panel.mod_tabs.count() == len(CATEGORIES)
+    boxes = []
+    for i in range(panel.mod_tabs.count()):
+        boxes.extend(panel.mod_tabs.widget(i).findChildren(QCheckBox))
+    assert set(boxes) == set(panel.mod_boxes.values())
+    assert len(boxes) == len(ORDER)
+
+
+def test_gui_tab_switch_keeps_selection(monkeypatch):
+    panel = _panel(monkeypatch)
+    panel._set_mods(["refined_anomaly"])
+    before = panel.enabled_ids()
+    for i in range(panel.mod_tabs.count()):
+        panel.mod_tabs.setCurrentIndex(i)
+        assert panel.enabled_ids() == before
+
+
+def test_gui_dependency_from_non_current_tab(monkeypatch):
+    panel = _panel(monkeypatch)
+    panel.mod_tabs.setCurrentIndex(0)             # refined_anomaly lives elsewhere
+    panel.mod_boxes["refined_anomaly"].setChecked(True)
+    assert panel.enabled_ids() == ("dynamic_i0", "anomaly", "refined_anomaly")
+
+
+def test_gui_module_summary_counts_all_tabs(monkeypatch):
+    panel = _panel(monkeypatch)
+    assert "已选 0" in panel.modbox.title()
+    panel._set_mods(["anomaly", "plots"])
+    assert "已选 2" in panel.modbox.title()

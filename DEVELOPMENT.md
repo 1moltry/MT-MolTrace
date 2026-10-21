@@ -120,20 +120,20 @@ end
 
 ## 功能模块（mod）
 
-管线 = **底座 + 可多选模块**。底座恒跑：读盘 → 电平估计 → 事件检测 → 特征提取 → 事件表 `<名>_events.xlsx`。其余功能都是模块，**默认全关**，按需开启（CLI `--mods/--all/--minimal`；GUI「模块（可多选）」面板勾选，并记住上次选择）。
+管线 = **底座 + 可多选模块**。底座恒跑：读盘 → 电平估计 → 事件检测 → 特征提取 → 事件表 `<名>_events.xlsx`。其余功能都是模块，**默认全关**，按需开启（CLI `--mods/--all/--minimal`；GUI「模块」区按功能分标签页勾选，并记住上次选择）。
 
-| mod | 作用 | 主要参数 | 产物 |
-|-----|------|----------|------|
-| `lowpass` | 检测前低通滤波 | `filter_lowpass_hz` | 滤波后信号 |
-| `dynamic_i0` | 动态开孔基线，逐事件 Io | `dr_pA` | 逐事件 Io |
-| `anomaly` | 宏异常（反压 / 膜抖 / 炸膜 / 漂移） | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
-| `refined_anomaly` | 细粒度分级异常（依赖 `anomaly` + `dynamic_i0`） | `refined_*` | 分级 kind |
-| `plots` | 输出三张图 | — | `_overview/_scatter/_hist.png` |
-| `waveform_export` | 每事件原始电流序列 | — | `<名>_events.mat` |
-| `dataset_export` | 合并训练表 | — | `dataset_all.csv` |
-| `summary` | 批次汇总 | — | `summary.xlsx` |
+| mod | 分类 | 作用 | 主要参数 | 产物 |
+|-----|------|------|----------|------|
+| `lowpass` | 预处理 | 检测前低通滤波 | `filter_lowpass_hz` | 滤波后信号 |
+| `dynamic_i0` | 预处理 | 动态开孔基线，逐事件 Io | `dr_pA` | 逐事件 Io |
+| `anomaly` | 异常检测 | 宏异常（反压 / 膜抖 / 炸膜 / 漂移） | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
+| `refined_anomaly` | 异常检测 | 细粒度分级异常（依赖 `anomaly` + `dynamic_i0`） | `refined_*` | 分级 kind |
+| `plots` | 单文件输出 | 输出三张图 | — | `_overview/_scatter/_hist.png` |
+| `waveform_export` | 单文件输出 | 每事件原始电流序列 | — | `<名>_events.mat` |
+| `dataset_export` | 批次输出 | 合并训练表 | — | `dataset_all.csv` |
+| `summary` | 批次输出 | 批次汇总 | — | `summary.xlsx` |
 
-新增模块只需在 `nanopore/mods.py` 注册一个 `ModSpec`，GUI 复选框与 CLI 解析都会自动带上。
+新增模块只需在 `nanopore/mods.py` 注册一个 `ModSpec`（含 `category=`），GUI 标签页与 CLI 解析都会自动带上。
 
 **检测变体不是模块**：事件极性（`polarity`）、事件平台占比（毛刺门控）等仍在参数里，它们改变底座「怎么检测」，与模块正交。
 

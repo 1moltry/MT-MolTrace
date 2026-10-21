@@ -4,7 +4,8 @@ Edits a :class:`PipelineConfig`, saves/loads it as JSON (a reusable analysis
 protocol) and triggers a background re-run.
 
 Layout:
-- 模块（可多选）: one checkbox per :mod:`nanopore.mods` entry. Empty = base only.
+- 模块（可多选）: one checkbox per :mod:`nanopore.mods` entry, grouped into
+  functional tabs from :data:`nanopore.mods.CATEGORIES`. Empty = base only.
   Enabling a mod auto-checks its prerequisites; the last selection is remembered
   via QSettings.
 - 参数: the base pipeline parameters (always shown).
@@ -21,10 +22,10 @@ from pathlib import Path
 from PyQt5.QtCore import QSettings, pyqtSignal
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
                              QFormLayout, QGroupBox, QHBoxLayout, QLineEdit,
-                             QPushButton, QVBoxLayout, QWidget)
+                             QPushButton, QTabWidget, QVBoxLayout, QWidget)
 
 from ..config import PipelineConfig
-from ..mods import MODS, ORDER, resolve_mods
+from ..mods import CATEGORIES, MODS, ORDER, resolve_mods
 from .bus import bus
 
 _SETTINGS = ("SDL-Nanopore", "gui")
@@ -187,11 +188,20 @@ class ParamPanel(QWidget):
                            "仍保留——用于浅但持续的阻孔状态。")
 
         # ---------------- layout ----------------
-        # 模块（可多选）
-        modbox = QGroupBox("模块（可多选；不勾=只跑底座）")
-        mlay = QVBoxLayout(modbox)
-        for mid in ORDER:
-            mlay.addWidget(self.mod_boxes[mid])
+        # 模块（可多选，按功能分标签页）
+        self.modbox = QGroupBox(self._module_title(0))
+        mlay = QVBoxLayout(self.modbox)
+        self.mod_tabs = QTabWidget()
+        for cid, label in CATEGORIES:
+            page = QWidget()
+            pl = QVBoxLayout(page)
+            pl.setContentsMargins(6, 6, 6, 6)
+            for mid in ORDER:
+                if MODS[mid].category == cid:
+                    pl.addWidget(self.mod_boxes[mid])
+            pl.addStretch(1)
+            self.mod_tabs.addTab(page, label)
+        mlay.addWidget(self.mod_tabs)
         btn_all = QPushButton("全选")
         btn_min = QPushButton("仅底座")
         btn_all.clicked.connect(lambda: self._set_mods(ORDER))
@@ -257,7 +267,7 @@ class ParamPanel(QWidget):
         btns.addWidget(self.load)
 
         lay = QVBoxLayout(self)
-        lay.addWidget(modbox)
+        lay.addWidget(self.modbox)
         lay.addWidget(base)
         lay.addWidget(self.level_box)
         lay.addWidget(self.burst_box)
@@ -294,6 +304,13 @@ class ParamPanel(QWidget):
         self.changed.emit()
 
     # ---------------- mod helpers ----------------
+    @staticmethod
+    def _module_title(n: int) -> str:
+        return f"模块（已选 {n} 个；不勾=只跑底座）"
+
+    def _update_module_summary(self) -> None:
+        self.modbox.setTitle(self._module_title(len(self._checked_raw())))
+
     def _checked_raw(self) -> list[str]:
         return [mid for mid in ORDER if self.mod_boxes[mid].isChecked()]
 
@@ -333,6 +350,7 @@ class ParamPanel(QWidget):
         self.lowpass_box.setVisible("lowpass" in on)
         self.i0_box.setVisible("dynamic_i0" in on)
         self.refined_box.setVisible("refined_anomaly" in on)
+        self._update_module_summary()
 
     def _sync_mode(self) -> None:
         burst = self.event_mode.currentData() == "burst"

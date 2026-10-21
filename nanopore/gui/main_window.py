@@ -2,14 +2,15 @@
 
 Layout (mirrors the review workflow 波形 → 事件 → 事件指纹):
 
-    left   : 事件表 (top)  +  异常事件（剔除）表 (bottom)
+    left   : 事件表 (top)  +  异常事件（剔除）表 (bottom, hidden by default)
     centre : 全程波形 (top) + 选中事件的放大切片 (bottom, splitter)
-    right  : 参数面板 (top) + 统计(直方图/散点) (bottom)
+    right  : 参数面板 (top) + 统计(直方图/散点) (bottom, hidden by default)
 
-Selecting an event — from the wave (click), the event table, the excluded
-table or the scatter — focuses the main view on that span **without changing
-the zoom** (pan only; toggle the toolbar to auto-zoom), fills the zoom slice,
-and syncs the other panels.
+The 视图 menu toggles every dock; the two secondary panels start hidden so the
+waveform keeps the space. Selecting an event — from the wave (click), the event
+table, the excluded table or the scatter — focuses the main view on that span
+**without changing the zoom** (pan only; toggle the toolbar to auto-zoom),
+fills the zoom slice, and syncs the other panels.
 """
 
 from __future__ import annotations
@@ -56,10 +57,15 @@ class MainWindow(QMainWindow):
         self.params.changed.connect(self._schedule_auto_rerun)
         self.params.run.clicked.connect(lambda: self._auto.stop())
 
-        self.addDockWidget(Qt.LeftDockWidgetArea, self._dock("事件", self.event))
-        self.addDockWidget(Qt.LeftDockWidgetArea, self._dock("异常事件（剔除）", self.excluded))
-        self.addDockWidget(Qt.RightDockWidgetArea, self._dock("参数", self.params))
-        self.addDockWidget(Qt.RightDockWidgetArea, self._dock("统计 (直方图/散点)", self.scatter))
+        self.dock_event = self._dock("事件", self.event, "dock_event")
+        self.dock_excluded = self._dock("异常事件（剔除）", self.excluded, "dock_excluded")
+        self.dock_params = self._dock("参数", self.params, "dock_params")
+        self.dock_scatter = self._dock("统计 (直方图/散点)", self.scatter, "dock_scatter")
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.dock_event)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.dock_excluded)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.dock_params)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.dock_scatter)
+        self._build_view_menu()
 
         self._build_toolbar()
 
@@ -71,10 +77,27 @@ class MainWindow(QMainWindow):
         if data:
             ctrl_mod.controller.load(data)
 
-    def _dock(self, title: str, widget) -> QDockWidget:
+    def _dock(self, title: str, widget, name: str) -> QDockWidget:
         dock = QDockWidget(title, self)
+        dock.setObjectName(name)
         dock.setWidget(widget)
         return dock
+
+    def _build_view_menu(self) -> None:
+        menu = self.menuBar().addMenu("视图")
+        for dock, label in (
+            (self.dock_event, "事件表"),
+            (self.dock_excluded, "异常事件表"),
+            (self.dock_params, "参数面板"),
+            (self.dock_scatter, "统计图"),
+        ):
+            act = dock.toggleViewAction()
+            act.setText(label)
+            menu.addAction(act)
+            dock.visibilityChanged.connect(
+                lambda visible, w=dock.widget(): w.update() if visible else None)
+        self.dock_excluded.hide()
+        self.dock_scatter.hide()
 
     # ---- live apply ------------------------------------------------------
     def _schedule_auto_rerun(self) -> None:
