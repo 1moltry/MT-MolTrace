@@ -107,9 +107,9 @@
 - 模块按功能分为 4 个标签页（预处理 / 异常检测 / 单文件输出 / 批次输出）：`ModSpec` 增加 `category`，`mods.CATEGORIES` 定义顺序；复选框状态跨标签保留，模块组标题显示已选总数；`ORDER` 与依赖解析不变。
 - 主图右键拖动改为矩形框选放大（`showAxRect(..., padding=0)`）；关闭 pyqtgraph 右键菜单；左键平移/点击选事件、滚轮缩放、全览不变。
 
-**测试**：新增 `tests/test_gui_layout.py`（默认隐藏、视图菜单切换）、`tests/test_gui_wavezoom.py`（最小拖动、矩形范围、菜单关闭），扩展 `tests/test_mods.py`（分类覆盖、标签页、跨标签依赖、已选计数）；全量 `pytest` 180 passed。
+**测试**：新增 `tests/test_gui_layout.py`（默认隐藏、视图菜单切换）、`tests/test_gui_wavezoom.py`（最小拖动、矩形范围、菜单关闭），扩展 `tests/test_mods.py`（分类覆盖、标签页、跨标签依赖、已选计数）；全量 `pytest` 180 passed。v2.0.0 exe 重建成功，zip 校验通过。
 
-**下一步**：重建 v2.0.0 exe；手动确认右键框选与面板显隐的视觉表现。
+**下一步**：手动确认右键框选与面板显隐的视觉表现。
 
 ---
 
