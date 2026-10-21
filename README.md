@@ -103,4 +103,4 @@ t = e.t1_s + (0:numel(w)-1)'/e.fs_hz;   % 每个采样点的时间（秒）
 
 MIT 许可证，见 `LICENSE`。
 
-由 Yize Liu（1moltry）与 Junjie Wen 开发，Huang Lab 资助。
+由 Huang Lab 的 Yize Liu（1moltry）开发与维护。

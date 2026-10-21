@@ -1,6 +1,6 @@
 # 贡献指南
 
-本仓库由 **Yize Liu（1moltry）** 与 **Junjie Wen** 共同开发，由 **Huang Lab** 提供资金支持。以 MIT 协议开源。
+本仓库由 **Huang Lab 的 Yize Liu（1moltry）** 开发与维护。以 MIT 协议开源。
 
 改动经 Pull Request 提交，由维护者审查后合并。协作机制（权限模型、版本号分配）见 [`DEVLOG.md`](DEVLOG.md)。
 

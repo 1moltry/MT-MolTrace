@@ -4,11 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nanopore-merged-lab"
-version = "0.1.0"
+version = "2.0.0"
 description = "Merged nanopore ABF analysis and interactive review suite"
 authors = [
-    { name = "Yize Liu" },
-    { name = "Junjie Wen" },
+    { name = "Yize Liu (1moltry), Huang Lab" },
 ]
 requires-python = ">=3.11"
 dependencies = ["numpy>=2.0", "pandas>=2.0", "scipy>=1.12", "matplotlib>=3.8", "openpyxl>=3.1", "pyabf>=2.3"]
