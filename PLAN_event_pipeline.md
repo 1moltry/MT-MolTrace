@@ -1,6 +1,6 @@
 # PLAN — 事件检测收敛与单事件描述层
 
-> 状态：**v2.1 已实施**（2026-10-22）。糖项目 `npsweep` 完成事件检测收敛与描述层骨架；
+> 状态：**v3.0.0 已实施**（2026-10-22）。糖项目 `npsweep` 完成事件检测收敛与描述层骨架；
 > SDL `nanopore` 已把平台法接入为第三种可选检测器（`detector=level/burst/plateau`），
 > 默认仍是电平法，现有行为不变。
 > 关联：`DEVLOG.md` [2026-10-22]；糖项目 `docs/EVENT_DESCRIPTION.md`。
@@ -74,7 +74,7 @@ class EventDescriber:
    - 新增 `nanopore/detect_plateau.py`（平台滞回 + 电压屏蔽 + 脉冲清除 + 炸膜剔除）；
    - `nanopore/detect.py` 增加 `resolve_detector_id` 与 plateau 分派；
    - `PipelineConfig.detector` + 平台法参数；GUI 检测算法下拉 + 平台参数组；
-   - CLI `--detector` 与平台法参数；版本 `2.1.0`；
+   - CLI `--detector` 与平台法参数；版本 `3.0.0`；
    - GUI：首页工作台（单文件 / 批量 / 对比 / 教程 + 最近打开）；分析窗口顶部工作栏
      固定“检测算法 / 算法对比 / 批量处理 / 结果摘要”；对比窗口可并排看三法的事件与边界；
    - 糖数据 GalNAc-1 用 `--detector plateau` 得到 **977 事件**，与现有语料一致。

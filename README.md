@@ -7,7 +7,7 @@
 ## 下载与安装
 
 1. 打开 [Releases 页面](https://github.com/1moltry/SDL-Auto-Data-process/releases)。
-2. 找到最新版本（当前为 `v2.1.0`），在 **Assets** 里点击 `SDL纳米孔分析_v2.1.0_win64.zip`。
+2. 在 **Assets** 里下载最新发行包（包名形如 `SDL纳米孔分析_v3.0.0_win64.zip`；当前代码版本为 `v3.0.0`，发行包以 Releases 页面为准）。
 3. 下载完成后，右键 zip 文件，选择“全部解压缩”。
 4. 打开解压后的文件夹，双击 `SDL纳米孔分析.exe`。
 

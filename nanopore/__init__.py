@@ -5,4 +5,4 @@ baseline/estimation -> detection -> feature -> export pipeline. Feature-table
 columns follow the lab spec. Anomaly detection and plotting are optional mods.
 """
 
-__version__ = "2.1.0"
+__version__ = "3.0.0"

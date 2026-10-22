@@ -36,8 +36,8 @@
 
 1. 打开仓库页面：<https://github.com/1moltry/SDL-Auto-Data-process>。
 2. 点页面右侧的 **Releases**，或直接打开 <https://github.com/1moltry/SDL-Auto-Data-process/releases>。
-3. 找到最新版本，例如 `v2.1.0`。
-4. 在版本页下方的 **Assets** 区域，点击 `SDL纳米孔分析_v2.1.0_win64.zip`。
+3. 找到最新版本，例如 `v3.0.0`。
+4. 在版本页下方的 **Assets** 区域，点击 `SDL纳米孔分析_v3.0.0_win64.zip`。
 5. 浏览器开始下载，文件约 106 MB。
 
 如果页面是英文，`Releases` 就是“发行版”，`Assets` 就是“附件”。安装包只放在 Releases 里，不在源代码目录里。
@@ -799,7 +799,7 @@ y = categorical(T.Label);
 
 反馈时请附上：
 
-- 软件版本，例如 `v2.1.0`。
+- 软件版本，例如 `v3.0.0`。
 - 操作系统，例如 Windows 11。
 - 复现步骤。
 - 报错原文或截图。
