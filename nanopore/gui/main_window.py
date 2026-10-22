@@ -15,11 +15,14 @@ fills the zoom slice, and syncs the other panels.
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import (QAction, QDockWidget, QFileDialog, QMainWindow,
-                             QSplitter, QToolBar)
+from pathlib import Path
+
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtWidgets import (QAction, QDockWidget, QFileDialog, QLabel,
+                             QMainWindow, QSplitter, QToolBar)
 
 from . import controller as ctrl_mod
+from . import history
 from .bus import bus
 from .eventtable import EventTable
 from .excludedview import ExcludedView
@@ -28,9 +31,22 @@ from .scatterview import ScatterView
 from .sliceview import SliceView
 from .waveview import WaveView
 
+_DETECTOR_LABELS = {
+    "level": "电平法",
+    "burst": "驻留包络（burst）",
+    "plateau": "平台滞回",
+}
+_DETECTOR_DESC = {
+    "level": "逐样本最近电平；边界在 50% 交叉。适合常规、多电平、肽信号。",
+    "burst": "驻留包络去抖；把毛刺和上下跳合并。适合抖动、碎片化阻孔。",
+    "plateau": "边界贴近开孔；部分恢复不切碎事件。适合糖、长阻孔信号。",
+}
+
 
 class MainWindow(QMainWindow):
-    def __init__(self, data: str | None = None) -> None:
+    home_requested = pyqtSignal()
+
+    def __init__(self, data: str | None = None, detector: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle("SDL 纳米孔分析 — 交互式分析界面")
 
@@ -67,6 +83,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock_scatter)
         self._build_view_menu()
 
+        self._build_workflow_bar()
         self._build_toolbar()
 
         bus.status.connect(self.statusBar().showMessage)
@@ -74,8 +91,11 @@ class MainWindow(QMainWindow):
         bus.event_selected.connect(self._on_select)
         bus.roi_rerun.connect(ctrl_mod.controller.rerun_roi)
 
+        if detector:
+            self.params.set_detector(detector)
+            self._on_detector_changed()
         if data:
-            ctrl_mod.controller.load(data)
+            ctrl_mod.controller.load(data, self.params.build_config())
 
     def _dock(self, title: str, widget, name: str) -> QDockWidget:
         dock = QDockWidget(title, self)
@@ -113,14 +133,60 @@ class MainWindow(QMainWindow):
         bus.status.emit("参数已更改，自动重跑 …")
         c.rerun()
 
-    def _build_toolbar(self) -> None:
-        bar = QToolBar("main")
+    def _build_workflow_bar(self) -> None:
+        """Top bar: the four user-facing decisions, left to right."""
+        bar = QToolBar("workflow")
         bar.setMovable(False)
         self.addToolBar(bar)
 
-        act_open = QAction("打开", self)
+        act_home = QAction("首页", self)
+        act_home.triggered.connect(self.home_requested.emit)
+        bar.addAction(act_home)
+
+        act_open = QAction("打开…", self)
         act_open.triggered.connect(self._open)
         bar.addAction(act_open)
+
+        self.path_label = QLabel("（未打开文件）")
+        self.path_label.setStyleSheet("color:#57606a; padding:0 10px;")
+        bar.addWidget(self.path_label)
+        bar.addSeparator()
+
+        bar.addWidget(QLabel("检测算法 "))
+        bar.addWidget(self.params.event_mode)
+        self.detector_desc = QLabel("")
+        self.detector_desc.setStyleSheet("color:#57606a; padding:0 10px;")
+        bar.addWidget(self.detector_desc)
+        bar.addSeparator()
+
+        act_cmp = QAction("算法对比…", self)
+        act_cmp.triggered.connect(self._compare)
+        bar.addAction(act_cmp)
+
+        act_batch = QAction("批量处理…", self)
+        act_batch.triggered.connect(self._batch)
+        bar.addAction(act_batch)
+
+        self.summary_label = QLabel("")
+        self.summary_label.setStyleSheet("font-weight:600; padding:0 10px;")
+        bar.addWidget(self.summary_label)
+
+        self.params.event_mode.currentIndexChanged.connect(self._on_detector_changed)
+        self._on_detector_changed()
+
+    def _on_detector_changed(self) -> None:
+        det = self.params.current_detector()
+        self.detector_desc.setText(_DETECTOR_DESC.get(det, ""))
+
+    def set_detector(self, detector: str) -> None:
+        """Select an algorithm from outside (compare dialog / home card)."""
+        self.params.set_detector(detector)
+        self._on_detector_changed()
+
+    def _build_toolbar(self) -> None:
+        bar = QToolBar("view")
+        bar.setMovable(False)
+        self.addToolBar(bar)
 
         act_run = QAction("重跑", self)
         act_run.triggered.connect(self.params._run)
@@ -130,10 +196,6 @@ class MainWindow(QMainWindow):
         act_fit = QAction("全览", self)
         act_fit.triggered.connect(self.wave.autoscale)
         bar.addAction(act_fit)
-
-        act_batch = QAction("批量处理…", self)
-        act_batch.triggered.connect(self._batch)
-        bar.addAction(act_batch)
 
         # selecting an event pans (default) or zooms the main view
         self.act_follow = QAction("选中时自适应缩放", self)
@@ -145,16 +207,28 @@ class MainWindow(QMainWindow):
         self.act_follow.toggled.connect(self.wave.set_zoom_on_select)
         bar.addAction(self.act_follow)
 
-    # ---- file / batch ----------------------------------------------------
+    # ---- file / batch / compare -----------------------------------------
     def _open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "打开 .abf", "", "ABF (*.abf)")
         if path:
-            ctrl_mod.controller.load(path)
+            ctrl_mod.controller.load(path, self.params.build_config())
 
     def _batch(self) -> None:
         from .batchdialog import BatchDialog
 
         dlg = BatchDialog(self.params.build_config(), self)
+        dlg.exec_()
+
+    def _compare(self) -> None:
+        from .compare import CompareDialog
+
+        c = ctrl_mod.controller
+        dlg = CompareDialog(
+            current_path=str(c.rec.path) if c.rec is not None else None,
+            cfg=self.params.build_config(),
+            parent=self,
+        )
+        dlg.use_detector.connect(self.set_detector)
         dlg.exec_()
 
     # ---- results / selection ---------------------------------------------
@@ -166,6 +240,18 @@ class MainWindow(QMainWindow):
         self.excluded.set_data(c.df_excluded)
         self.slice.clear()
 
+        det = self.params.current_detector()
+        n_raw = len(c.det.events) if c.det is not None else 0
+        n_keep = len(c.df) if c.df is not None else 0
+        n_exc = len(c.df_excluded) if c.df_excluded is not None else 0
+        self.summary_label.setText(
+            f"{_DETECTOR_LABELS.get(det, det)} · 检出 {n_raw} · "
+            f"保留 {n_keep} · 剔除 {n_exc}")
+        if c.rec is not None:
+            self.path_label.setText(Path(c.rec.path).name)
+            self.path_label.setToolTip(str(c.rec.path))
+            history.add_recent(c.rec.path)
+
     def _on_select(self, idx: int) -> None:
         c = ctrl_mod.controller
         if c.df is None or not (0 <= idx < len(c.df)):
@@ -173,6 +259,15 @@ class MainWindow(QMainWindow):
         self.event.select_row(idx)
         self.scatter.highlight(idx)
         self._show_row(c.df.iloc[idx], idx + 1)
+
+    def closeEvent(self, event) -> None:       # noqa: N802 — Qt signature
+        """When opened from the home workbench, X returns there instead of quitting."""
+        if getattr(self, "return_to_home_on_close", False):
+            self.return_to_home_on_close = False
+            event.ignore()
+            self.home_requested.emit()
+            return
+        super().closeEvent(event)
 
     def _show_row(self, row, number: int | None = None) -> None:
         """Focus the main view on an event span (pan, no zoom) + fill the slice."""

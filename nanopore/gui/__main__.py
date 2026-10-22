@@ -1,4 +1,8 @@
-"""GUI entry point: ``python -m nanopore.gui [file.abf]``."""
+"""GUI entry point: ``python -m nanopore.gui [file.abf]``.
+
+No file -> the home workbench (the normal way to start the software).
+A file  -> the analysis workspace directly (handy for shortcuts / drag-drop).
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import sys
 
 from PyQt5.QtWidgets import QApplication
 
+from .home import HomeWindow
 from .main_window import MainWindow
 
 
@@ -17,9 +22,13 @@ def main(argv: list[str] | None = None) -> int:
         if a and not a.startswith("-"):
             data = a
             break
-    win = MainWindow(data=data)
-    win.resize(1500, 950)
-    win.show()
+    if data:
+        win = MainWindow(data=data)
+        win.resize(1500, 950)
+        win.show()
+    else:
+        win = HomeWindow()
+        win.show()
     return app.exec_()
 
 

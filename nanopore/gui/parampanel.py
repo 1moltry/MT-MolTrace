@@ -31,6 +31,19 @@ from .bus import bus
 _SETTINGS = ("SDL-Nanopore", "gui")
 
 
+def load_saved_config() -> PipelineConfig:
+    """Read the last protocol from QSettings (used by Home / batch / compare)."""
+    raw = QSettings(*_SETTINGS).value("last_config", None)
+    if raw:
+        try:
+            data = json.loads(str(raw))
+            valid = {f.name for f in fields(PipelineConfig)}
+            return PipelineConfig(**{k: v for k, v in data.items() if k in valid})
+        except Exception:                    # noqa: BLE001 — corrupt settings: defaults
+            pass
+    return PipelineConfig()
+
+
 def _spin(minimum: float, maximum: float, value: float, suffix: str = "",
           step: float = 0.1) -> QDoubleSpinBox:
     s = QDoubleSpinBox()
@@ -272,7 +285,7 @@ class ParamPanel(QWidget):
         form.addRow(self.l0_en, self.l0)
         form.addRow(self.l1_en, self.l1)
         form.addRow("事件极性", self.polarity)
-        form.addRow("检测模式", self.event_mode)
+        # 检测算法选择器由 MainWindow 移到顶部工作栏，避免埋在参数表里。
 
         # 电平法专用参数（burst 模式下不参与计算，故随之隐藏）
         self.level_box = QGroupBox("电平法参数")
@@ -372,6 +385,19 @@ class ParamPanel(QWidget):
 
     def _emit_changed(self, *args) -> None:
         self.changed.emit()
+
+    # ---------------- detector selection ----------------
+    def current_detector(self) -> str:
+        return str(self.event_mode.currentData())
+
+    def set_detector(self, detector: str) -> None:
+        """Select level / burst / plateau from outside (top workflow bar)."""
+        idx = self.event_mode.findData(detector)
+        if idx < 0:
+            return
+        if idx != self.event_mode.currentIndex():
+            self.event_mode.setCurrentIndex(idx)
+        self._sync_mode()
 
     # ---------------- mod helpers ----------------
     @staticmethod

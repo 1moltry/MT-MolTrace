@@ -7,12 +7,14 @@ parameter panel (single source of truth).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
-from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
-                             QLineEdit, QListWidget, QPlainTextEdit, QProgressBar,
-                             QPushButton, QVBoxLayout)
+from PyQt5.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
+                             QLabel, QLineEdit, QListWidget, QPlainTextEdit,
+                             QProgressBar, QPushButton, QVBoxLayout)
 
 from ..pipeline import run_batch
 
@@ -94,16 +96,34 @@ class BatchDialog(QDialog):
         out_row.addWidget(self.out_edit, 1)
         out_row.addWidget(self.out_btn)
 
+        self.detector = QComboBox()
+        for det, label in (("level", "电平法"), ("burst", "驻留包络（burst）"),
+                           ("plateau", "平台滞回")):
+            self.detector.addItem(label, det)
+        idx = self.detector.findData(cfg.detector or cfg.event_mode)
+        self.detector.setCurrentIndex(idx if idx >= 0 else 0)
+        self.detector.currentIndexChanged.connect(self._on_detector)
+        self.algo_note = QLabel("")
+        self.algo_note.setStyleSheet("color:#57606a;")
+        algo_row = QHBoxLayout()
+        algo_row.addWidget(QLabel("检测算法"))
+        algo_row.addWidget(self.detector)
+        algo_row.addWidget(self.algo_note, 1)
+        self._on_detector()
+
         self.bar = QProgressBar()
         self.bar.setFormat("%v / %m 个文件")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
 
         self.run_btn = QPushButton("开始处理")
+        self.open_out = QPushButton("打开输出目录")
+        self.open_out.clicked.connect(self._open_output)
         self.close_btn = QPushButton("关闭")
         self.run_btn.clicked.connect(self._run)
         self.close_btn.clicked.connect(self._close)
         btn_row = QHBoxLayout()
+        btn_row.addWidget(self.open_out)
         btn_row.addStretch(1)
         btn_row.addWidget(self.run_btn)
         btn_row.addWidget(self.close_btn)
@@ -112,6 +132,7 @@ class BatchDialog(QDialog):
         lay.addLayout(pick_row)
         lay.addWidget(self.files, 1)
         lay.addLayout(out_row)
+        lay.addLayout(algo_row)
         lay.addWidget(self.bar)
         lay.addWidget(self.log, 1)
         lay.addLayout(btn_row)
@@ -149,6 +170,29 @@ class BatchDialog(QDialog):
         self.bar.setMaximum(max(n, 1))
         self.bar.setValue(0)
         self._log(f"当前选择 {n} 个 .abf 文件")
+
+    def _on_detector(self, *_args) -> None:
+        det = str(self.detector.currentData())
+        self._cfg = replace(
+            self._cfg, detector=det,
+            event_mode="burst" if det == "burst" else "level",
+        )
+        if det == "plateau":
+            self.algo_note.setText(
+                f"进入 {self._cfg.plateau_enter_depth_pA:g} pA · "
+                f"退出 {self._cfg.plateau_exit_depth_pA:g} pA · "
+                f"短开孔 {self._cfg.plateau_min_open_ms:g} ms（参数在主界面调整）")
+        elif det == "burst":
+            self.algo_note.setText("驻留包络去抖；参数与主界面一致。")
+        else:
+            self.algo_note.setText("边界在 50% 交叉；参数与主界面一致。")
+
+    def _open_output(self) -> None:
+        out = self.out_edit.text().strip()
+        if out and Path(out).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(out))
+        else:
+            self._log("输出目录还不存在，先开始处理或选择目录。")
 
     def selected_files(self) -> list[Path]:
         items = [self.files.item(i).text() for i in range(self.files.count())]
@@ -188,6 +232,7 @@ class BatchDialog(QDialog):
         ok = sum(1 for r in reports if not getattr(r, "error", ""))
         self._log(f"完成：{ok}/{len(reports)} 个文件成功；结果已写入输出目录")
         self.run_btn.setEnabled(True)
+        self.open_out.setEnabled(True)
 
     def _on_failed(self, msg: str) -> None:
         self._log(f"批处理中断：{msg}")

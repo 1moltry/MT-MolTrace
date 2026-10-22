@@ -75,6 +75,8 @@ class EventDescriber:
    - `nanopore/detect.py` 增加 `resolve_detector_id` 与 plateau 分派；
    - `PipelineConfig.detector` + 平台法参数；GUI 检测算法下拉 + 平台参数组；
    - CLI `--detector` 与平台法参数；版本 `2.1.0`；
+   - GUI：首页工作台（单文件 / 批量 / 对比 / 教程 + 最近打开）；分析窗口顶部工作栏
+     固定“检测算法 / 算法对比 / 批量处理 / 结果摘要”；对比窗口可并排看三法的事件与边界；
    - 糖数据 GalNAc-1 用 `--detector plateau` 得到 **977 事件**，与现有语料一致。
 3. **肽样本验证（进行中）**：6 样本初步对比见 DEVLOG；kept 事件数在 Asp/ARNKRS 上有差异，
    需逐条核查后再决定是否把 plateau 设为某些数据的默认。**默认仍为 level。**
