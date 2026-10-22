@@ -122,6 +122,8 @@
 - 全量 `pytest` **193 passed**（新增首页/对比 3 例）。
 - 离屏冒烟：首页卡片、顶部算法切换、`MainWindow` 关闭回首页、对比窗口跑完 Ala
   （level 44/37、burst 46/37、plateau 215/35）并生成表格。
+- 发行包 `release/SDL纳米孔分析_v2.1.0_win64.zip` 已重建（107 MB，zip 校验 1442 项，
+  exe/README/tutorial 均在包内）。
 
 **下一步**
 - 重建 v2.1.0 发行包，真机过目首页与分析界面布局。
