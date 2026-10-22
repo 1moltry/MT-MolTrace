@@ -103,6 +103,20 @@
 
 ---
 
+## [2026-10-22] 回到发行包分发 + 构建 v3.0.0 包
+
+**变更**
+- README 恢复发行包模式并精简：下载/解压/启动、核心功能、开发哲学、教程入口；保留用户在网页上修改的标题与简介。
+- tutorial §2 与故障排查表恢复为 Releases 安装流程。
+- 构建 `release/MOLTRACE_v3.0.0_win64.zip`：107 MB，1442 项，含 `MOLTRACE.exe`、`_internal`、README、tutorial、LICENSE。
+- `MOLTRACE.bat` 保留自动装环境逻辑，供源码方式使用。
+
+**测试**：PyInstaller 构建与 zip 校验通过；本轮仅改文档，未重跑 pytest（上轮 193 passed）。
+
+**下一步**：在 GitHub 新建 `v3.0.0` Release 并上传该 zip；真机打开一次确认界面。
+
+---
+
 ## [2026-10-22] 分发方式改为 GitHub Desktop 克隆
 
 **变更**
