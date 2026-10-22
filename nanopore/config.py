@@ -48,6 +48,11 @@ class PipelineConfig:
     # params below, not mods.
     enabled_mods: tuple[str, ...] = ()
 
+    # --- event description / fingerprint (mod "describe") ---
+    describer: str = "dp_bic"          # "dp_bic" (segments) or "scalar"
+    describe_params: dict[str, float] = field(default_factory=dict)
+                                       # overrides for the describer's ParamSpec defaults
+
     # --- detection variants (not mods; they change how the base detector works) ---
     event_mode: str = "level"          # "level" = threshold/level runs (default);
                                        # "burst" = dwell-envelope debounce (merges

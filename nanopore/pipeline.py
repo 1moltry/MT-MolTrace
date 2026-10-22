@@ -17,7 +17,7 @@ import pandas as pd
 
 from .analysis import (build_combined_dataset, plot_hist, plot_overview,
                        plot_scatter, write_combined_dataset, write_event_waveforms,
-                       write_events_xlsx, write_summary)
+                       write_events_xlsx, write_fingerprints, write_summary)
 from .analyze import analyze
 from .anomaly import AnomalyResult
 from .config import PipelineConfig
@@ -54,6 +54,10 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
     stem = abf_path.stem
     write_events_xlsx(res.df, res.anom.regions if res.anom else [],
                       out_dir / f"{stem}_events.xlsx", excluded=res.df_excluded)
+
+    if "describe" in mods and res.descs is not None:
+        write_fingerprints(res.descs, out_dir, stem, fs=rec.sample_rate_hz,
+                           source=abf_path.name)
 
     if "waveform_export" in mods:
         write_event_waveforms(

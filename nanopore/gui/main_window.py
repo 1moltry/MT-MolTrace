@@ -28,6 +28,7 @@ from .eventtable import EventTable
 from .excludedview import ExcludedView
 from .parampanel import ParamPanel
 from .scatterview import ScatterView
+from .segmenttable import SegmentTable
 from .sliceview import SliceView
 from .waveview import WaveView
 
@@ -50,12 +51,18 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("MOLTRACE · 摩尔迹 — 分析界面")
 
-        # centre: full trace on top, selected-event zoom slice below
+        # centre: full trace on top, selected-event zoom slice + segment table below
         self.wave = WaveView()
         self.slice = SliceView()
+        self.segments = SegmentTable()
+        bottom = QSplitter(Qt.Horizontal)
+        bottom.addWidget(self.slice)
+        bottom.addWidget(self.segments)
+        bottom.setStretchFactor(0, 3)
+        bottom.setStretchFactor(1, 1)
         split = QSplitter(Qt.Vertical)
         split.addWidget(self.wave)
-        split.addWidget(self.slice)
+        split.addWidget(bottom)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 2)
         self.setCentralWidget(split)
@@ -89,7 +96,9 @@ class MainWindow(QMainWindow):
         bus.status.connect(self.statusBar().showMessage)
         bus.detection_finished.connect(self._on_results)
         bus.event_selected.connect(self._on_select)
+        bus.description_ready.connect(self._on_description)
         bus.roi_rerun.connect(ctrl_mod.controller.rerun_roi)
+        self._current_number: int | None = None
 
         if detector:
             self.params.set_detector(detector)
@@ -207,6 +216,30 @@ class MainWindow(QMainWindow):
         self.act_follow.toggled.connect(self.wave.set_zoom_on_select)
         bar.addAction(self.act_follow)
 
+        self.act_fp = QAction("指纹分段", self)
+        self.act_fp.setCheckable(True)
+        self.act_fp.setChecked("describe" in self.params.enabled_ids())
+        self.act_fp.setToolTip(
+            "事件指纹（描述层）\n"
+            "开：对每个保留事件做事件内分段（DP+BIC），切片图叠加分段，\n"
+            "    批量处理时输出 <名>_fingerprints.xlsx / .json。\n"
+            "首次开启或事件很多时，分析会明显变慢。")
+        self.act_fp.toggled.connect(self._on_fingerprint_toggled)
+        self.params.mod_changed.connect(self._on_mod_changed)
+        self.segments.segment_selected.connect(self.slice.highlight_segment)
+        bar.addSeparator()
+        bar.addAction(self.act_fp)
+
+    def _on_fingerprint_toggled(self, enabled: bool) -> None:
+        self.params.set_mod_enabled("describe", enabled)
+        bus.status.emit("事件指纹已启用，正在重跑 …" if enabled else "事件指纹已关闭")
+
+    def _on_mod_changed(self, mid: str, enabled: bool) -> None:
+        if mid == "describe":
+            self.act_fp.blockSignals(True)
+            self.act_fp.setChecked(enabled)
+            self.act_fp.blockSignals(False)
+
     # ---- file / batch / compare -----------------------------------------
     def _open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "打开 .abf", "", "ABF (*.abf)")
@@ -239,6 +272,8 @@ class MainWindow(QMainWindow):
         self.event.set_data(c.df)
         self.excluded.set_data(c.df_excluded)
         self.slice.clear()
+        self.segments.clear()
+        self._current_number = None
 
         det = self.params.current_detector()
         n_raw = len(c.det.events) if c.det is not None else 0
@@ -258,7 +293,22 @@ class MainWindow(QMainWindow):
             return
         self.event.select_row(idx)
         self.scatter.highlight(idx)
+        self._current_number = idx + 1
         self._show_row(c.df.iloc[idx], idx + 1)
+        c.describe_event(idx)
+
+    def _on_description(self, event_id: int, desc) -> None:
+        """Fill the slice/table when the selected event's description arrives."""
+        if event_id != self._current_number:
+            return
+        c = ctrl_mod.controller
+        idx = event_id - 1
+        if c.df is None or not (0 <= idx < len(c.df)) or c.rec is None:
+            return
+        sr = c.rec.sample_rate_hz
+        self.slice.set_row(c.df.iloc[idx], c.rec.current, sr,
+                           number=event_id, desc=desc)
+        self.segments.set_description(desc, sr)
 
     def closeEvent(self, event) -> None:       # noqa: N802 — Qt signature
         """When opened from the home workbench, X returns there instead of quitting."""
@@ -273,7 +323,15 @@ class MainWindow(QMainWindow):
         """Focus the main view on an event span (pan, no zoom) + fill the slice."""
         c = ctrl_mod.controller
         self.wave.focus_event(float(row["t1"]), float(row["t2"]))
-        self.slice.set_row(row,
-                           c.rec.current if c.rec is not None else None,
-                           c.rec.sample_rate_hz if c.rec is not None else 0.0,
-                           number=number)
+        desc = None
+        if number is not None:
+            desc = c.desc_cache.get(number)
+        sr = c.rec.sample_rate_hz if c.rec is not None else 0.0
+        self.slice.set_row(row, c.rec.current if c.rec is not None else None,
+                           sr, number=number, desc=desc)
+        if desc is not None:
+            self.segments.set_description(desc, sr)
+        elif number is not None and "describe" in c.cfg.enabled_mods:
+            self.segments.set_pending()
+        else:
+            self.segments.clear()

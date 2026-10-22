@@ -103,6 +103,26 @@
 
 ---
 
+## [2026-10-22] v3.1.0：事件指纹描述层集成
+
+**变更**
+- 从 `糖测序-ML找指纹` 移植 `describe.py` / `steps.py`：EventView、Segment、EventDescription、描述器注册表、DP+BIC 分段、Scalar 对照描述器；适配 MOLTRACE 的记录与特征表，去掉 mat/CSV/CLI 依赖。
+- 新增 mod `describe`（默认关闭）：批量输出 `<名>_fingerprints.xlsx`（events / segments / params）与 `.json`（嵌套结构）。
+- GUI：参数面板增加“事件指纹”组；切片图叠加分段线与段电平；右侧分段表；工具栏“指纹分段”开关。选中事件按需计算并缓存，避免整文件阻塞。
+- CLI：`--describe dp_bic|scalar`、`--fp-param KEY=VALUE`。
+- DP 内层用 numba 编译（可选；缺失时退回 numpy），长事件约 0.3–0.5 s/个；numba 加入 `gui` / `dev` extras。
+- 版本 `3.0.0 → 3.1.0`；README/tutorial 更新，明确“只做分段，不做指纹分类/识别”。
+
+**测试**：新增 14 条（合成三段真值、JSON/Excel、按需 worker、GUI 叠加）；全量 **207 passed**（46 s）。
+
+**性能**：Gln 6 事件 2.7 s；His 前 30 事件 9.3 s（0.31 s/事件）。
+
+**已知限制**：DP+BIC 可能过分割（糖数据 30 段 vs 人工 18 指纹）；批量开启后耗时随事件长度增长。
+
+**下一步**：构建 v3.1.0 发行包；标注数据足够后再做指纹匹配/分类。
+
+---
+
 ## [2026-10-22] 回到发行包分发 + 构建 v3.0.0 包
 
 **变更**

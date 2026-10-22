@@ -19,6 +19,8 @@ CURVE_COLOR = "#222222"
 START_COLOR = (31, 79, 181)
 END_COLOR = (214, 39, 40)
 REF_COLOR = (44, 160, 44)
+SEGMENT_COLORS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+                  "#9467bd", "#8c564b", "#e377c2", "#7f7f7f")
 
 
 def _num(row, key) -> float:
@@ -51,6 +53,9 @@ class SliceView(QWidget):
         self.plot.addItem(self.curve)
 
         self._markers: list = []
+        self._seg_items: list = []
+        self._seg_levels: list = []
+        self._sr = 0.0
         self._title = QLabel("（未选择事件）")
         self._title.setWordWrap(True)
 
@@ -63,13 +68,16 @@ class SliceView(QWidget):
     def clear(self) -> None:
         self.curve.setData([], [])
         self._clear_markers()
+        self._clear_segments()
+        self._sr = 0.0
         self._title.setText("（未选择事件）")
 
-    def set_row(self, row, raw, sr, number: int | None = None) -> None:
+    def set_row(self, row, raw, sr, number: int | None = None, desc=None) -> None:
         """Draw the event in ``row`` (a feature-table row) from ``raw``/``sr``.
 
         ``number`` is the 1-based event number shown in the title, so the slice
-        can be referred to unambiguously.
+        can be referred to unambiguously. ``desc`` (an EventDescription) draws
+        the fingerprint segments on top when the describe mod is enabled.
         """
         if row is None or raw is None or not sr:
             self.clear()
@@ -90,6 +98,8 @@ class SliceView(QWidget):
         t_rel = np.arange(i0, i1) / sr - t1          # seconds, event start at 0
         self.curve.setData(t_rel, seg)
         self._clear_markers()
+        self._clear_segments()
+        self._sr = float(sr)
 
         for xv, col in ((0.0, START_COLOR), (span, END_COLOR)):
             line = pg.InfiniteLine(pos=xv, angle=90,
@@ -122,10 +132,53 @@ class SliceView(QWidget):
         reason = row.get("drop_reason", "") if hasattr(row, "get") else ""
         if reason:
             parts.append(f"剔除：{reason}")
+        n_seg = len(getattr(desc, "segments", []) or []) if desc is not None else 0
+        if n_seg:
+            parts.append(f"指纹 {n_seg} 段")
         self._title.setText("   ".join(parts))
+        self._draw_segments(desc)
 
     # ---- internals -------------------------------------------------------
     def _clear_markers(self) -> None:
         for it in self._markers:
             self.plot.removeItem(it)
         self._markers = []
+
+    def _clear_segments(self) -> None:
+        for it in self._seg_items + [item for item, _color in self._seg_levels]:
+            self.plot.removeItem(it)
+        self._seg_items = []
+        self._seg_levels = []
+
+    def _draw_segments(self, desc) -> None:
+        """Draw segment level lines and boundaries for the selected event."""
+        segs = (getattr(desc, "segments", None) or []) if desc is not None else []
+        if not segs or not self._sr:
+            return
+        for i, s in enumerate(segs):
+            color = SEGMENT_COLORS[i % len(SEGMENT_COLORS)]
+            x0 = s.start / self._sr
+            x1 = s.end / self._sr
+            if s.level_pA is not None and np.isfinite(s.level_pA):
+                level = pg.PlotDataItem([x0, x1], [s.level_pA, s.level_pA],
+                                        pen=pg.mkPen(color, width=2.0))
+                level.setZValue(4)
+                self.plot.addItem(level)
+                self._seg_levels.append((level, color))
+            line = pg.InfiniteLine(pos=x0, angle=90,
+                                   pen=pg.mkPen(color, width=1.0, style=Qt.DashLine))
+            line.setZValue(4)
+            self.plot.addItem(line)
+            self._seg_items.append(line)
+        last = segs[-1]
+        line = pg.InfiniteLine(pos=last.end / self._sr, angle=90,
+                               pen=pg.mkPen(SEGMENT_COLORS[(len(segs) - 1) % len(SEGMENT_COLORS)],
+                                            width=1.0, style=Qt.DashLine))
+        line.setZValue(4)
+        self.plot.addItem(line)
+        self._seg_items.append(line)
+
+    def highlight_segment(self, index: int) -> None:
+        """Emphasize one segment level line (row clicked in the segment table)."""
+        for i, (item, color) in enumerate(self._seg_levels):
+            item.setPen(pg.mkPen(color, width=5.0 if i == index else 2.0))

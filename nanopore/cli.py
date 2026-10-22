@@ -11,6 +11,22 @@ from .config import PipelineConfig
 from .mods import all_mods, resolve_mods
 
 
+def _parse_scalar(text: str):
+    """Parse a --fp-param value into bool/int/float/str."""
+    value = text.strip()
+    low = value.lower()
+    if low in ("true", "false"):
+        return low == "true"
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="moltrace",
                                 description="MOLTRACE — single-molecule nanopore .abf analysis pipeline")
@@ -26,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="drop the anomaly mods from the enabled set (alias for --mods minus anomaly)")
     r.add_argument("--mods", default=None,
                    help="comma-separated mod ids to enable (lowpass,dynamic_i0,anomaly,"
-                        "refined_anomaly,plots,waveform_export,dataset_export,summary); "
+                        "refined_anomaly,describe,plots,waveform_export,dataset_export,summary); "
                         "dependencies are added automatically. Overrides the config file's "
                         "enabled_mods.")
     r.add_argument("--minimal", action="store_true", help="base pipeline only, no mods")
@@ -41,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="event detector: level (Clampfit semantics, default), burst "
                         "(dwell-envelope debounce), or plateau (hysteresis platform; keeps "
                         "partial recoveries inside one event)")
+    r.add_argument("--describe", choices=("dp_bic", "scalar"), default=None,
+                   help="enable event description (fingerprint segments) and pick the "
+                        "describer; writes <name>_fingerprints.xlsx/.json")
+    r.add_argument("--fp-param", action="append", default=None, metavar="KEY=VALUE",
+                   help="describer parameter override, repeatable "
+                        "(e.g. --fp-param k_max=50 --fp-param tau_min_us=200)")
     r.add_argument("--event-mode", choices=("level", "burst"), default=None,
                    help="legacy alias for --detector (kept for older configs/scripts)")
     r.add_argument("--burst-enter-frac", type=float, default=None,
@@ -115,6 +137,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_anomaly:
         cfg.enabled_mods = tuple(m for m in resolve_mods(cfg.enabled_mods)
                                  if m not in ("anomaly", "refined_anomaly"))
+    if args.describe is not None:
+        cfg.enabled_mods = resolve_mods(tuple(cfg.enabled_mods) + ("describe",))
+        cfg.describer = args.describe
+    for item in args.fp_param or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            print(f"error: --fp-param expects KEY=VALUE, got {item!r}", file=sys.stderr)
+            return 2
+        cfg.describe_params[key.strip()] = _parse_scalar(value)
     if args.level0 is not None:
         cfg.level0 = args.level0
     if args.level1 is not None:

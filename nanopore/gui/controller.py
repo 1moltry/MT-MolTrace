@@ -28,7 +28,7 @@ class AnalysisWorker(QThread):
     def run(self) -> None:
         try:
             rec = read_abf(self.path)
-            res = analyze(rec, self.cfg)
+            res = analyze(rec, self.cfg, with_descriptions=False)
             self.done.emit(res.rec, res.lv, res.df, res.df_excluded, (res.anom, res.det))
         except Exception as exc:  # surface as a status message, keep the app alive
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -59,6 +59,32 @@ class RoiWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+class DescribeWorker(QThread):
+    """Describe one event on demand (the DP can take ~0.5 s on long events)."""
+
+    done = pyqtSignal(int, object)      # 1-based event id, EventDescription
+    failed = pyqtSignal(str)
+
+    def __init__(self, rec, row, event_id: int, cfg: PipelineConfig):
+        super().__init__()
+        self.rec = rec
+        self.row = row
+        self.event_id = event_id
+        self.cfg = cfg
+
+    def run(self) -> None:
+        try:
+            from ..describe import get_describer, make_event_view
+
+            describer = get_describer(self.cfg.describer or "dp_bic")
+            params = {**describer.default_params(),
+                      **dict(self.cfg.describe_params or {})}
+            view = make_event_view(self.rec, self.row, event_id=self.event_id)
+            self.done.emit(self.event_id, describer.describe(view, params))
+        except Exception as exc:  # noqa: BLE001 — surface as status, keep the app alive
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class Controller(QObject):
     """Holds the currently loaded recording + analysis results."""
 
@@ -79,6 +105,9 @@ class Controller(QObject):
         self._roi_worker: RoiWorker | None = None
         self.roi_df = None
         self.roi_span = None
+        self.desc_cache: dict[int, object] = {}    # 1-based event id -> description
+        self._desc_pending: set[int] = set()
+        self._desc_workers: list[DescribeWorker] = []
 
     def load(self, path: str | Path, cfg: PipelineConfig | None = None) -> None:
         if cfg is not None:
@@ -117,10 +146,45 @@ class Controller(QObject):
         bus.status.emit(f"ROI [{span[0]:.2f}, {span[1]:.2f}]s: {n} 事件")
         bus.roi_finished.emit(df, span)
 
+    def describe_event(self, idx: int) -> None:
+        """Emit (or compute) the description for the 0-based event ``idx``."""
+        if self.rec is None or self.df is None or not (0 <= idx < len(self.df)):
+            return
+        if "describe" not in self.cfg.enabled_mods:
+            bus.description_ready.emit(idx + 1, None)
+            return
+        event_id = idx + 1
+        if event_id in self.desc_cache:
+            bus.description_ready.emit(event_id, self.desc_cache[event_id])
+            return
+        if event_id in self._desc_pending:
+            return
+        self._desc_pending.add(event_id)
+        gen = self._gen
+        worker = DescribeWorker(self.rec, self.df.iloc[idx], event_id, self.cfg)
+        self._desc_workers.append(worker)
+        worker.done.connect(lambda eid, desc, g=gen: self._on_described(eid, desc, g))
+        worker.failed.connect(lambda msg, g=gen: self._on_failed(msg, g))
+        worker.finished.connect(lambda w=worker: self._release_desc(w))
+        worker.start()
+
+    def _on_described(self, event_id: int, desc, gen: int) -> None:
+        self._desc_pending.discard(event_id)
+        if gen != self._gen:
+            return
+        self.desc_cache[event_id] = desc
+        bus.description_ready.emit(event_id, desc)
+
+    def _release_desc(self, worker) -> None:
+        if worker in self._desc_workers:
+            self._desc_workers.remove(worker)
+
     def _start(self, path: str | Path) -> None:
         self._gen += 1
         gen = self._gen
         self._running = True
+        self.desc_cache.clear()
+        self._desc_pending.clear()
         worker = AnalysisWorker(path, self.cfg)
         self._worker = worker
         self._workers.append(worker)

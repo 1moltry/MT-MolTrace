@@ -39,10 +39,15 @@ class AnalysisResult:
     anom: AnomalyResult | None
     df: pd.DataFrame               # kept events (feature table)
     df_excluded: pd.DataFrame | None
+    descs: list | None = None      # per-kept-event EventDescription (mod "describe")
 
 
-def analyze(rec, cfg: PipelineConfig) -> AnalysisResult:
-    """Run the base pipeline plus ``cfg.enabled_mods`` on an already-read record."""
+def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> AnalysisResult:
+    """Run the base pipeline plus ``cfg.enabled_mods`` on an already-read record.
+
+    ``with_descriptions=False`` skips the (potentially slow) per-event describe
+    stage; the GUI computes descriptions lazily for the selected event instead.
+    """
     mods = set(resolve_mods(cfg.enabled_mods))
 
     lv = estimate_levels(
@@ -115,7 +120,14 @@ def analyze(rec, cfg: PipelineConfig) -> AnalysisResult:
         i0_profile=i0_profile,
     )
     df, df_excluded = classify_exclusions(df, anom.regions if anom else [], cfg.min_toff_ms)
-    return AnalysisResult(rec, lv, filtered, det, i0_profile, anom, df, df_excluded)
+
+    descs = None
+    if with_descriptions and "describe" in mods:
+        from .describe import describe_rows
+
+        descs = describe_rows(df, rec, cfg)
+
+    return AnalysisResult(rec, lv, filtered, det, i0_profile, anom, df, df_excluded, descs)
 
 
 def _artifact_config(cfg: PipelineConfig):

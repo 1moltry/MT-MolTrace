@@ -39,6 +39,60 @@ def write_events_xlsx(df: pd.DataFrame, anomalies: list, path: Path,
             adf.to_excel(xw, sheet_name="anomalies", index=False)
 
 
+FINGERPRINT_SEGMENT_COLUMNS = [
+    "event_id", "seg_idx", "start_ms", "end_ms", "width_ms",
+    "level_pA", "level_rel_pA", "level_norm", "amp_pA", "snr", "tau_ms",
+]
+
+
+def write_fingerprints(descs, out_dir: Path, stem: str, *, fs: float,
+                       source: str) -> dict[str, Path]:
+    """Write ``<stem>_fingerprints.xlsx`` (flat tables) and ``.json`` (nested).
+
+    The Excel file carries one row per segment plus one row per event, so the
+    lab can inspect segments without parsing JSON. The JSON keeps the full
+    contract for downstream matching/ML work.
+    """
+    from .describe import descriptions_to_json, dumps
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    seg_rows: list[dict] = []
+    ev_rows: list[dict] = []
+    for d in descs:
+        for i, seg in enumerate(d.segments):
+            seg_rows.append({
+                "event_id": d.event_id,
+                "seg_idx": i + 1,
+                "start_ms": seg.start / fs * 1000.0,
+                "end_ms": seg.end / fs * 1000.0,
+                "width_ms": seg.width_samples / fs * 1000.0,
+                "level_pA": seg.level_pA,
+                "level_rel_pA": seg.level_rel,
+                "level_norm": seg.level_norm,
+                "amp_pA": seg.attrs.get("amp_pA"),
+                "snr": seg.attrs.get("snr"),
+                "tau_ms": seg.attrs.get("tau_ms"),
+            })
+        row = {"event_id": d.event_id, "describer": d.describer,
+               "valid": d.quality.get("valid", True),
+               "reason": d.quality.get("reason", "")}
+        row.update({f"f_{k}": v for k, v in d.features.items()})
+        ev_rows.append(row)
+
+    xlsx = out_dir / f"{stem}_fingerprints.xlsx"
+    json_path = out_dir / f"{stem}_fingerprints.json"
+    with pd.ExcelWriter(xlsx, engine="openpyxl") as xw:
+        pd.DataFrame(ev_rows).to_excel(xw, sheet_name="events", index=False)
+        pd.DataFrame(seg_rows, columns=FINGERPRINT_SEGMENT_COLUMNS).to_excel(
+            xw, sheet_name="segments", index=False)
+        params = descs[0].params if descs else {}
+        pd.DataFrame([{"key": k, "value": str(v)} for k, v in params.items()]).to_excel(
+            xw, sheet_name="params", index=False)
+    json_path.write_text(dumps(descriptions_to_json(descs, source)), encoding="utf-8")
+    return {"xlsx": xlsx, "json": json_path}
+
+
 def plot_overview(
     current: np.ndarray,
     sample_rate_hz: float,

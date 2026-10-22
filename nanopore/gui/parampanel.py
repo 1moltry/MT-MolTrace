@@ -66,6 +66,7 @@ def _tip(widget, text: str):
 
 class ParamPanel(QWidget):
     changed = pyqtSignal()      # any option edit → main window schedules a rerun
+    mod_changed = pyqtSignal(str, bool)   # a module checkbox changed (toolbar sync)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -124,6 +125,15 @@ class ParamPanel(QWidget):
         self.p_rupt.setChecked(True)
         self.p_abs = _spin(0.0, 1e6, 1000.0, " pA", 100.0)
         self.p_diff = _spin(0.0, 1e6, 500.0, " pA", 100.0)
+
+        # --- event description / fingerprint (mod "describe") ---
+        self.describer = QComboBox()
+        self.describer.addItem("DP+BIC 台阶", "dp_bic")
+        self.describer.addItem("标量特征", "scalar")
+        self.fp_kmax = _spin(1, 200, 30, "", 1)
+        self.fp_tau = _spin(10, 5000, 250, " µs", 10)
+        self.fp_amp = _spin(0, 500, 10, " pA", 1)
+        self.fp_snr = _spin(0, 50, 0.0, "", 0.5)
 
         # --- mod checkboxes ---
         self.mod_boxes: dict[str, QCheckBox] = {}
@@ -337,6 +347,24 @@ class ParamPanel(QWidget):
         rf.addRow("漂移位移阈值", self.drift_frac)
         rf.addRow("漂移不稳定阈值", self.drift_iqr)
 
+        self.fp_box = QGroupBox("事件指纹（描述器参数）")
+        ff = QFormLayout(self.fp_box)
+        ff.addRow("描述器", self.describer)
+        ff.addRow("最大段数", self.fp_kmax)
+        ff.addRow("最小驻留 (µs)", self.fp_tau)
+        ff.addRow("最小跃变 (pA)", self.fp_amp)
+        ff.addRow("最小显著度 (0=关)", self.fp_snr)
+        _tip(self.describer,
+             "事件内描述器\n"
+             "DP+BIC 台阶：把事件体切成若干恒定电平段，输出段电平、宽度与跃变。\n"
+             "标量特征：整事件一组统计量，不切段，作为对照基线。")
+        _tip(self.fp_kmax, "最大段数\nDP 搜索的段数上限。越大越能描述复杂形状，也越慢。")
+        _tip(self.fp_tau, "最小驻留 (µs)\n短于此值的段会并入相邻段，避免把噪声当指纹。")
+        _tip(self.fp_amp, "最小跃变 (pA)\n相邻段电平差小于此值就合并。")
+        _tip(self.fp_snr, "最小显著度 (0=关)\n"
+                          "(|跃变|/σ)·√(驻留·采样率) 下限；低于阈值的段并入相邻段。\n"
+                          "源实现未启用此门控，默认 0 以保持结果一致。")
+
         self.run = QPushButton("重跑检测")
         self.save = QPushButton("存参数")
         self.load = QPushButton("读参数")
@@ -357,6 +385,7 @@ class ParamPanel(QWidget):
         lay.addWidget(self.lowpass_box)
         lay.addWidget(self.i0_box)
         lay.addWidget(self.refined_box)
+        lay.addWidget(self.fp_box)
         lay.addLayout(btns)
         lay.addStretch(1)
 
@@ -375,13 +404,15 @@ class ParamPanel(QWidget):
                   self.b_merge, self.b_block,
                   self.b_occ, self.b_depth, self.drift_frac, self.drift_iqr,
                   self.p_enter, self.p_exit, self.p_open, self.p_abs, self.p_diff,
+                  self.fp_kmax, self.fp_tau, self.fp_amp, self.fp_snr,
                   self.l0, self.l1):
             w.valueChanged.connect(self._emit_changed)
         for w in (self.l0_en, self.l1_en, self.drift_en, self.b_cross,
                   self.p_volt, self.p_pulse, self.p_rupt):
             w.stateChanged.connect(self._emit_changed)
-        for w in (self.polarity, self.event_mode, self.p_dir):
+        for w in (self.polarity, self.event_mode, self.p_dir, self.describer):
             w.currentIndexChanged.connect(self._emit_changed)
+        self.describer.currentIndexChanged.connect(self._sync_describer)
         self.lab.textChanged.connect(self._emit_changed)
         for cb in self.mod_boxes.values():
             cb.stateChanged.connect(self._emit_changed)
@@ -417,6 +448,12 @@ class ParamPanel(QWidget):
         """Selected mods with prerequisites resolved and ordered."""
         return resolve_mods(self._checked_raw())
 
+    def set_mod_enabled(self, mid: str, enabled: bool) -> None:
+        """Toolbar shortcut: flip a module checkbox (signals fire as usual)."""
+        cb = self.mod_boxes[mid]
+        if cb.isChecked() != enabled:
+            cb.setChecked(enabled)
+
     def _set_checked(self, mid: str, value: bool) -> None:
         cb = self.mod_boxes[mid]
         if cb.isChecked() != value:
@@ -443,13 +480,20 @@ class ParamPanel(QWidget):
                     self._set_checked(other, False)
         self._update_visibility()
         self._save_settings()
+        self.mod_changed.emit(mid, self.mod_boxes[mid].isChecked())
 
     def _update_visibility(self) -> None:
         on = set(self._checked_raw())
         self.lowpass_box.setVisible("lowpass" in on)
         self.i0_box.setVisible("dynamic_i0" in on)
         self.refined_box.setVisible("refined_anomaly" in on)
+        self.fp_box.setVisible("describe" in on)
         self._update_module_summary()
+
+    def _sync_describer(self) -> None:
+        dp = self.describer.currentData() == "dp_bic"
+        for w in (self.fp_kmax, self.fp_tau, self.fp_amp, self.fp_snr):
+            w.setEnabled(dp)
 
     def _sync_mode(self) -> None:
         mode = self.event_mode.currentData()
@@ -529,6 +573,13 @@ class ParamPanel(QWidget):
             pre_event_ms=self.pre.value(),
             dr_pA=self.dr.value(),
             label=self.lab.text(),
+            describer=str(self.describer.currentData()),
+            describe_params={
+                "k_max": int(self.fp_kmax.value()),
+                "tau_min_us": float(self.fp_tau.value()),
+                "amp_min_pA": float(self.fp_amp.value()),
+                "snr_min": float(self.fp_snr.value()),
+            },
         )
 
     def load_config(self, cfg: PipelineConfig) -> None:
@@ -575,6 +626,14 @@ class ParamPanel(QWidget):
             self.l1.setValue(cfg.level1)
         idx = self.polarity.findData(cfg.polarity)
         self.polarity.setCurrentIndex(idx if idx >= 0 else 0)
+        idx = self.describer.findData(cfg.describer)
+        self.describer.setCurrentIndex(idx if idx >= 0 else 0)
+        params = cfg.describe_params or {}
+        self.fp_kmax.setValue(int(params.get("k_max", 30)))
+        self.fp_tau.setValue(float(params.get("tau_min_us", 250.0)))
+        self.fp_amp.setValue(float(params.get("amp_min_pA", 10.0)))
+        self.fp_snr.setValue(float(params.get("snr_min", 0.0)))
+        self._sync_describer()
         self._set_mods(cfg.enabled_mods)
 
     # ---------------- actions ----------------
