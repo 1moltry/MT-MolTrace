@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, data: str | None = None, detector: str | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SDL 纳米孔分析 — 交互式分析界面")
+        self.setWindowTitle("MOLTRACE · 摩尔迹 — 分析界面")
 
         # centre: full trace on top, selected-event zoom slice below
         self.wave = WaveView()

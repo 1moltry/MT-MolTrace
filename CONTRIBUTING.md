@@ -7,8 +7,8 @@
 ## 环境准备
 
 ```bash
-git clone https://github.com/1moltry/SDL-Auto-Data-process.git
-cd SDL-Auto-Data-process
+git clone https://github.com/1moltry/MT-MolTrace.git
+cd MT-MolTrace
 pip install -e ".[dev]"
 ```
 

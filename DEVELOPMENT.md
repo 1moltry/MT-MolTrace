@@ -2,7 +2,7 @@
 
 面向开发与维护。**用户使用请看 [README.md](README.md)**；变更记录见 [DEVLOG.md](DEVLOG.md)；协作流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-仓库地址：<https://github.com/1moltry/SDL-Auto-Data-process>
+仓库地址：<https://github.com/1moltry/MT-MolTrace>
 
 ## 背景
 
@@ -62,7 +62,7 @@ python -m nanopore gui                       # 不带参数，用工具栏「打
 python -m nanopore gui "abf数据案例/abf数据案例/Ala.abf"   # 启动并直接载入
 ```
 
-源码方式启动也可双击 `启动界面.bat`：要求已 `pip install -e .`，用 PATH 上的 `pythonw` 无控制台窗口运行。若双击后无反应，改双击 `启动界面-调试.bat`，它会保留控制台显示报错。
+源码方式启动也可双击 `MOLTRACE.bat`：要求已 `pip install -e .`，用 PATH 上的 `pythonw` 无控制台窗口运行。若双击后无反应，改双击 `MOLTRACE-debug.bat`，它会保留控制台显示报错。
 
 功能要点：主波形支持滚轮缩放、拖动平移、自动缩放与 30M 样本自适应降采样，叠加蓝色理想化事件方波线与硬异常淡色带；下方切片显示选中事件的原始电流（事件内时间轴 ms，含起止虚线与开孔基准线）。事件表按 State 过滤，剔除表带 `drop_reason` 与计数汇总，两表首列均为稳定「序号」。点击主波形、表格行或散点都会选中同一事件：主波形平移跳转、缩放比例不变（工具栏「选中时自适应缩放」可切成缩放模式）。参数面板改动后自动重跑（600 ms 防抖，运行中的请求合并为一次），并可存/读 JSON 协议。统计面板含 dwell 直方图（线性 / log10 切换，时间单位 μs/ms/s/min 自适应）与 SD-|ΔI| 散点。Cursor 选区可对子区间用独立电平重析。图形统一白底，只用蓝色突出事件。
 
@@ -255,7 +255,7 @@ python -m pytest tests/ -q
 ## 发行打包
 
 ```bash
-python release/build_release.py          # 出 release/SDL纳米孔分析_v<版本>_win64.zip
+python release/build_release.py          # 出 release/MOLTRACE_v<版本>_win64.zip
 ```
 
 构建脚本先用 `git archive HEAD` 取干净源码树（`.gitattributes` 里的 `export-ignore` 规则剔除 tests、DEVLOG、规划稿、CI 配置、启动 bat；未入库的本地文件本就进不去），再用 PyInstaller 打成免安装 exe 目录，附上 `README.md` 与 `LICENSE`，最后校验清单并压缩。

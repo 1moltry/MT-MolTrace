@@ -101,6 +101,25 @@
 
 ---
 
+## [2026-10-22] 产品更名 MOLTRACE · 摩尔迹 + 仓库迁移
+
+**变更**
+- 产品名 `SDL 纳米孔分析` → **MOLTRACE（摩尔迹）**；品牌 1moltry，定位“从一摩尔到单分子”。
+- GUI 窗口/首页、README、tutorial、DEVELOPMENT、CONTRIBUTING、data/README、pyproject
+  （发行名 `moltrace`，新增 `moltrace` 命令，保留 `nanopore` 旧别名）与构建脚本同步。
+- 仓库 remote 改为 `https://github.com/1moltry/MT-MolTrace`（与旧仓库同一提交历史）。
+- 启动脚本更名：`MOLTRACE.bat` / `MOLTRACE-debug.bat`。
+- QSettings 作用域保留旧名 `SDL-Nanopore`，避免现有用户丢失上次参数与最近文件。
+- 本地精简：删除 `__pycache__`、`.pytest_cache`、`build/release` 中间产物、
+  `_tmp` 诊断输出；保留 `build/venv`、数据、`pCLAMP11.2/`、`_tmp` 参考文档与
+  最新 `v2.1.0` 回退包。
+
+**测试**：193 passed（改名不影响行为）。
+
+**下一步**：需要发行时再打包 `MOLTRACE_v3.0.0_win64.zip`。
+
+---
+
 ## [2026-10-22] v3.0.0：大版本升级 + 自动推送工作流
 
 **变更**

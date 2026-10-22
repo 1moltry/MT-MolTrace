@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PyQt5.QtCore import QSettings
 
+# Legacy QSettings scope kept after the product rename: existing users keep
+# their recent-file list and last protocol.
 SETTINGS = ("SDL-Nanopore", "gui")
 _KEY = "recent_files"
 _LIMIT = 8

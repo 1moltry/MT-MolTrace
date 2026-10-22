@@ -180,8 +180,8 @@ def _panel(monkeypatch):
 
     _QAPP = QApplication.instance() or QApplication(sys.argv)
     # isolate from the user's real persisted selection, and start deterministic
-    monkeypatch.setattr(pp, "_SETTINGS", ("SDL-Nanopore-test", "gui"))
-    QSettings("SDL-Nanopore-test", "gui").clear()
+    monkeypatch.setattr(pp, "_SETTINGS", ("MOLTRACE-test", "gui"))
+    QSettings("MOLTRACE-test", "gui").clear()
     return pp.ParamPanel()
 
 

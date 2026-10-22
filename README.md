@@ -1,4 +1,6 @@
-# SDL 纳米孔数据分析
+# MOLTRACE · 摩尔迹 — 单分子纳米孔电流迹分析
+
+**MOLTRACE（摩尔迹）** 是 1moltry 为课题组做的单分子纳米孔电流迹分析工作台：从一摩尔到单分子。
 
 打开一个 `.abf` 电流记录，自动完成事件分割、特征提取和异常剔除，并导出 Excel、图片和 MATLAB 数据。
 
@@ -6,22 +8,22 @@
 
 ## 下载与安装
 
-1. 打开 [Releases 页面](https://github.com/1moltry/SDL-Auto-Data-process/releases)。
-2. 在 **Assets** 里下载最新发行包（包名形如 `SDL纳米孔分析_v3.0.0_win64.zip`；当前代码版本为 `v3.0.0`，发行包以 Releases 页面为准）。
+1. 打开 [Releases 页面](https://github.com/1moltry/MT-MolTrace/releases)。
+2. 在 **Assets** 里下载最新发行包（包名形如 `MOLTRACE_v3.0.0_win64.zip`；当前代码版本为 `v3.0.0`，发行包以 Releases 页面为准）。
 3. 下载完成后，右键 zip 文件，选择“全部解压缩”。
-4. 打开解压后的文件夹，双击 `SDL纳米孔分析.exe`。
+4. 打开解压后的文件夹，双击 `MOLTRACE.exe`。
 
 第一次运行 Windows 可能弹出“Windows 已保护你的电脑”。点“更多信息”，再点“仍要运行”。程序没有数字签名，这是正常提示。
 
 > **不要只把 exe 拷走。** exe 旁边的 `_internal` 文件夹必须保留，否则程序无法启动。
 >
-> 建议解压到硬盘目录，例如 `D:\SDL纳米孔分析`。解压后约 250 MB。
+> 建议解压到硬盘目录，例如 `D:\MOLTRACE`。解压后约 250 MB。
 >
-> 如果 Releases 页面还没有安装包，请在 [Issues](https://github.com/1moltry/SDL-Auto-Data-process/issues) 留言，或向实验室同事索取 zip。
+> 如果 Releases 页面还没有安装包，请在 [Issues](https://github.com/1moltry/MT-MolTrace/issues) 留言，或向实验室同事索取 zip。
 
 ## 第一次使用（5 分钟）
 
-1. 双击 `SDL纳米孔分析.exe`，进入**首页工作台**。
+1. 双击 `MOLTRACE.exe`，进入**首页工作台**。
 2. 选择一种任务：
    - **单文件分析**：打开一个 `.abf`，查看波形和事件。
    - **批量处理**：选择文件或文件夹，用同一套参数导出。
@@ -50,7 +52,7 @@
 
 ## 三种事件检测算法
 
-右侧“参数 → 检测算法”可选：
+顶部工作栏“检测算法”可选：
 
 | 算法 | 适合 | 特点 |
 |------|------|------|
@@ -108,4 +110,4 @@
 
 MIT 许可证，见 [LICENSE](LICENSE)。
 
-由 Huang Lab 的 Yize Liu（1moltry）开发与维护。
+由 Huang Lab 的 Yize Liu（1moltry）开发与维护。产品名 **MOLTRACE（摩尔迹）**，仓库 `MT-MolTrace`。

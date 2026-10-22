@@ -39,7 +39,7 @@ QPushButton#taskCard:hover {
 class HomeWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SDL 纳米孔分析")
+        self.setWindowTitle("MOLTRACE · 摩尔迹")
         self.resize(1000, 720)
         self._windows: list[QMainWindow] = []
 
@@ -48,14 +48,14 @@ class HomeWindow(QMainWindow):
         lay.setContentsMargins(42, 32, 42, 24)
         lay.setSpacing(14)
 
-        title = QLabel("SDL 纳米孔分析")
+        title = QLabel("MOLTRACE · 摩尔迹")
         f = QFont()
         f.setPointSize(22)
         f.setBold(True)
         title.setFont(f)
         lay.addWidget(title)
 
-        sub = QLabel("打开一个 .abf，选择检测算法，检查事件并导出。所有操作都在本界面完成。")
+        sub = QLabel("单分子纳米孔电流迹分析工作台。打开一个 .abf，选择检测算法，检查事件并导出。")
         sub.setStyleSheet("color:#57606a;")
         lay.addWidget(sub)
         lay.addSpacing(8)
@@ -96,7 +96,7 @@ class HomeWindow(QMainWindow):
         self._refresh_recent()
 
         foot = QHBoxLayout()
-        foot.addWidget(QLabel(f"版本 {__version__}"))
+        foot.addWidget(QLabel(f"MOLTRACE {__version__} · 从一摩尔到单分子 · 1moltry"))
         foot.addStretch(1)
         btn_clear = QPushButton("清空最近记录")
         btn_clear.clicked.connect(self._clear_recent)

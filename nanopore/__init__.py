@@ -1,4 +1,4 @@
-"""SDL nanopore automated analysis pipeline.
+"""MOLTRACE — single-molecule nanopore current-trace analysis workbench.
 
 Three selectable event detectors (level / burst / plateau) share one
 baseline/estimation -> detection -> feature -> export pipeline. Feature-table

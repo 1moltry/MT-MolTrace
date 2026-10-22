@@ -1,4 +1,4 @@
-# SDL 纳米孔数据分析 · 使用教程
+# MOLTRACE · 摩尔迹 · 使用教程
 
 本教程面向第一次使用本软件的同学。读完后，你可以独立完成：
 
@@ -34,10 +34,10 @@
 
 ### 2.1 从 GitHub 下载
 
-1. 打开仓库页面：<https://github.com/1moltry/SDL-Auto-Data-process>。
-2. 点页面右侧的 **Releases**，或直接打开 <https://github.com/1moltry/SDL-Auto-Data-process/releases>。
+1. 打开仓库页面：<https://github.com/1moltry/MT-MolTrace>。
+2. 点页面右侧的 **Releases**，或直接打开 <https://github.com/1moltry/MT-MolTrace/releases>。
 3. 找到最新版本，例如 `v3.0.0`。
-4. 在版本页下方的 **Assets** 区域，点击 `SDL纳米孔分析_v3.0.0_win64.zip`。
+4. 在版本页下方的 **Assets** 区域，点击 `MOLTRACE_v3.0.0_win64.zip`。
 5. 浏览器开始下载，文件约 106 MB。
 
 如果页面是英文，`Releases` 就是“发行版”，`Assets` 就是“附件”。安装包只放在 Releases 里，不在源代码目录里。
@@ -49,8 +49,8 @@
 解压后应看到这样的目录：
 
 ```text
-SDL纳米孔分析/
-├── SDL纳米孔分析.exe
+MOLTRACE/
+├── MOLTRACE.exe
 ├── _internal/
 ├── README.md
 └── LICENSE
@@ -58,14 +58,14 @@ SDL纳米孔分析/
 
 注意两点：
 
-- `SDL纳米孔分析.exe` 和 `_internal` 文件夹必须放在一起。只把 exe 拷到桌面，程序无法启动。
+- `MOLTRACE.exe` 和 `_internal` 文件夹必须放在一起。只把 exe 拷到桌面，程序无法启动。
 - 不要把 exe 放在压缩包里直接双击。Windows 会把它解压到临时目录，旁边的文件可能不完整。
 
-建议解压到硬盘目录，例如 `D:\SDL纳米孔分析`。不要放在只读目录、U 盘或网络盘。
+建议解压到硬盘目录，例如 `D:\MOLTRACE`。不要放在只读目录、U 盘或网络盘。
 
 ### 2.3 第一次启动
 
-双击 `SDL纳米孔分析.exe`。
+双击 `MOLTRACE.exe`。
 
 第一次运行时，Windows 可能弹出“Windows 已保护你的电脑”。原因是程序没有购买数字签名。
 
@@ -762,7 +762,7 @@ y = categorical(T.Label);
 
 **怎么提需求或报 bug？**
 
-到 <https://github.com/1moltry/SDL-Auto-Data-process/issues> 新建 Issue。请附上版本号、操作步骤、报错原文。不要上传未公开的实验数据。
+到 <https://github.com/1moltry/MT-MolTrace/issues> 新建 Issue。请附上版本号、操作步骤、报错原文。不要上传未公开的实验数据。
 
 **怎么保留一套参数？**
 
@@ -795,7 +795,7 @@ y = categorical(T.Label);
 
 使用中遇到问题，欢迎到 GitHub Issues 反馈：
 
-<https://github.com/1moltry/SDL-Auto-Data-process/issues>
+<https://github.com/1moltry/MT-MolTrace/issues>
 
 反馈时请附上：
 

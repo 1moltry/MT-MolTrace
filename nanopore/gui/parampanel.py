@@ -29,6 +29,8 @@ from ..config import PipelineConfig
 from ..mods import CATEGORIES, MODS, ORDER, resolve_mods
 from .bus import bus
 
+# Legacy QSettings scope kept after the product rename: existing users keep
+# their saved protocol and module selection.
 _SETTINGS = ("SDL-Nanopore", "gui")
 
 

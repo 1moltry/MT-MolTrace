@@ -24,8 +24,8 @@ def qapp():
 def win(qapp, monkeypatch):
     from nanopore.gui import parampanel as pp
 
-    monkeypatch.setattr(pp, "_SETTINGS", ("SDL-Nanopore-test-layout", "gui"))
-    QSettings("SDL-Nanopore-test-layout", "gui").clear()
+    monkeypatch.setattr(pp, "_SETTINGS", ("MOLTRACE-test-layout", "gui"))
+    QSettings("MOLTRACE-test-layout", "gui").clear()
 
     from nanopore.gui.main_window import MainWindow
 

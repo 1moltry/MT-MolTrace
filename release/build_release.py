@@ -10,7 +10,7 @@ What it does, in order:
 3. freezes the GUI into a one-folder bundle with PyInstaller;
 4. copies ``README.md`` and ``LICENSE`` next to the exe;
 5. asserts the bundle carries none of the internal paths, then writes
-   ``release/SDL纳米孔分析_v<version>_win64.zip``.
+   ``release/MOLTRACE_v<version>_win64.zip``.
 
 Usage::
 
@@ -47,7 +47,7 @@ OUT_DIR = REPO / "release"
 
 DEFAULT_ICON = Path(r"E:\download\1moltry_nanopore_no_person.ico")
 DEFAULT_VENV = REPO / "build" / "venv"     # clean build env (see ensure_build_python)
-EXE_NAME = "SDL纳米孔分析"
+EXE_NAME = "MOLTRACE"
 ENTRY_NAME = "_frozen_entry.py"
 
 # PyInstaller cannot see these: they are imported inside functions (or by name
@@ -106,8 +106,8 @@ FORBIDDEN = (
     "release",
     "CLAUDE.md",
     "goal.md",
-    "启动界面.bat",
-    "启动界面-调试.bat",
+    "MOLTRACE.bat",
+    "MOLTRACE-debug.bat",
     "PLAN_burst_detection.md",
     "PLAN_mods_architecture.md",
 )
@@ -305,7 +305,7 @@ def make_zip(pkg_app: Path, version: str) -> Path:
 def verify_zip(zip_path: Path) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
-    # entries look like "SDL纳米孔分析/<...>"; only the first segment under the
+    # entries look like "MOLTRACE/<...>"; only the first segment under the
     # app folder is a shipping decision — deeper names are library internals
     leaked = [n for n in names
               if len(n.split("/")) > 1 and n.split("/")[1] in FORBIDDEN]

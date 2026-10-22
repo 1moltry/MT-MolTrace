@@ -26,5 +26,5 @@
 /PLAN_*.md export-ignore
 /data/ export-ignore
 /release/ export-ignore
-/启动界面.bat export-ignore
-/启动界面-调试.bat export-ignore
+/MOLTRACE.bat export-ignore
+/MOLTRACE-debug.bat export-ignore

@@ -12,7 +12,8 @@ from .mods import all_mods, resolve_mods
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="nanopore", description="Automated nanopore .abf analysis pipeline")
+    p = argparse.ArgumentParser(prog="moltrace",
+                                description="MOLTRACE — single-molecule nanopore .abf analysis pipeline")
     p.add_argument("--version", action="version", version=f"nanopore {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 

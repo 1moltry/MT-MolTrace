@@ -1,12 +1,12 @@
 @echo off
 rem ============================================================
-rem  SDL nanopore analysis -- GUI launcher (double-click me)
+rem  MOLTRACE (摩尔迹) -- GUI launcher (double-click me)
 rem  Starts the PyQt5 GUI with NO console window.
 rem
 rem  Requires the package to be installed first:
 rem      pip install -e .
 rem
-rem  If nothing happens, run 启动界面-调试.bat to see the error.
+rem  If nothing happens, run MOLTRACE-debug.bat to see the error.
 rem ============================================================
 setlocal
 
