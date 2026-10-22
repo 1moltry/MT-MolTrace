@@ -100,6 +100,29 @@
 
 ---
 
+## [2026-10-22] 算法审计：事件检测收敛 + 单事件描述层边界
+
+**变更**
+- 新增 `PLAN_event_pipeline.md`：跨三项目的算法审计、糖数据诊断证据、统一检测器与描述层契约。
+- 糖项目 `npsweep`：删除 Clampfit-lite `detect_events`（与 SDL 电平法边界差中位 7×10⁻¹² ms，数值等价）；
+  平台滞回成为唯一事件检测；新增 `npsweep/describe.py`（`EventView` / 可变长 `Segment` /
+  `EventDescription` / 描述器注册表 / `ParamSpec`；内置 `scalar`、`dp_bic`）与
+  `docs/EVENT_DESCRIPTION.md`。
+- 修 σ 估计 bug：原按 `3·std(整窗)` 取带会被事件本体污染（实测 43.9 pA，真值 1.8）；
+  `describe.py` 与 `cutlab/core.py` 改为“深度 5% 或 5 pA 窄带 + MAD”。
+- SDL 代码本阶段未改；电平法保留为肽/多电平路径，待平台法在 6 样本上验证后再决定是否切换。
+
+**测试**
+- 糖项目 `pytest tests` 37 passed；GalNAc-1 重提取 977 事件，与现有事件表逐值一致。
+- 诊断脚本 `_tmp/diag_event_detectors.py`（本地，不入库）：6 文件、三检测器两两匹配。
+
+**下一步**
+- 在 SDL 6 个样例上验证平台法（向上/向下/双向、多电平、近基线事件）。
+- 描述层 GUI 入口：描述器下拉 + 事件内段叠加；为后续变长形状/词表方法留位。
+- 按 `PLAN_event_pipeline.md` 推进共享 core 与重复代码清理。
+
+---
+
 ## [2026-10-21] 用户向 README 重写 + 完整教程
 
 **变更**
