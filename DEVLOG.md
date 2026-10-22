@@ -103,6 +103,20 @@
 
 ---
 
+## [2026-10-22] 分发方式改为 GitHub Desktop 克隆
+
+**变更**
+- README 重写分发章节：不再引导下载发行包，改为安装 Python + GitHub Desktop，克隆后双击 `MOLTRACE.bat`；更新走 Fetch origin / Pull origin。明确 Fork 不会自动更新，仅用于改代码。
+- `MOLTRACE.bat` 首次双击自动创建 `.venv` 并执行 `pip install -e ".[gui]"`；默认源失败时自动改用清华镜像重试。用标记文件对比 `pyproject.toml` 修改时间，决定是否重装。
+- `MOLTRACE-debug.bat` 复用同一安装逻辑，保留控制台输出。
+- tutorial §2 与故障排查表同步为克隆流程；`.gitignore` 增加 `.venv/`。
+
+**测试**：首次引导实测通过（建 venv、装依赖、`import` 校验），二次启动跳过安装；`pytest` 193 passed。
+
+**下一步**：若日后仍需要免安装包，可让 CI 在打 tag 时自动构建 Release，免去手工上传。
+
+---
+
 ## [2026-10-22] 产品更名 MOLTRACE · 摩尔迹 + 仓库迁移
 
 **变更**

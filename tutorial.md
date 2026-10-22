@@ -32,65 +32,63 @@
 
 ## 2. 下载与安装
 
-### 2.1 从 GitHub 下载
+本软件以源码方式发布，不提供免安装 exe。下面用 GitHub Desktop 把仓库克隆到本地；第一次需要安装 Python，以后每次更新点一下即可。
 
-1. 打开仓库页面：<https://github.com/1moltry/MT-MolTrace>。
-2. 点页面右侧的 **Releases**，或直接打开 <https://github.com/1moltry/MT-MolTrace/releases>。
-3. 找到最新版本，例如 `v3.0.0`。
-4. 在版本页下方的 **Assets** 区域，点击 `MOLTRACE_v3.0.0_win64.zip`。
-5. 浏览器开始下载，文件约 106 MB。
+### 2.1 一次性准备
 
-如果页面是英文，`Releases` 就是“发行版”，`Assets` 就是“附件”。安装包只放在 Releases 里，不在源代码目录里。
+1. 注册 GitHub 账号：<https://github.com/signup>。
+2. 安装 Python 3.11 或更高版本：<https://www.python.org/downloads/>。安装时**勾选 `Add python.exe to PATH`**。
+3. 安装 GitHub Desktop：<https://desktop.github.com/>，登录账号。
 
-### 2.2 解压与目录结构
+GitHub Desktop（GitHub 桌面客户端）：用鼠标完成克隆和同步的图形界面，不需要敲 Git 命令。
 
-下载完成后，右键 zip 文件，选择“全部解压缩”。
+### 2.2 克隆仓库
 
-解压后应看到这样的目录：
+1. GitHub Desktop 菜单点 **File → Clone repository…**。
+2. 选 **URL** 标签，粘贴 `https://github.com/1moltry/MT-MolTrace.git`。
+3. `Local path` 选 `D:\MOLTRACE`。不要放在 OneDrive 或有空格的路径下。
+4. 点 **Clone**，等进度条结束。
 
-```text
-MOLTRACE/
-├── MOLTRACE.exe
-├── _internal/
-├── README.md
-└── LICENSE
-```
-
-注意两点：
-
-- `MOLTRACE.exe` 和 `_internal` 文件夹必须放在一起。只把 exe 拷到桌面，程序无法启动。
-- 不要把 exe 放在压缩包里直接双击。Windows 会把它解压到临时目录，旁边的文件可能不完整。
-
-建议解压到硬盘目录，例如 `D:\MOLTRACE`。不要放在只读目录、U 盘或网络盘。
+克隆（Clone）：把仓库完整下载到电脑，并记住来源，之后可以一键同步上游更新。
 
 ### 2.3 第一次启动
 
-双击 `MOLTRACE.exe`。
+1. 菜单点 **Repository → Show in Explorer**，打开克隆目录。
+2. 双击 `MOLTRACE.bat`。
+3. 首次会弹出黑色窗口安装依赖，约 200 MB，需要 5～15 分钟，**不要关闭**。
+4. 安装完成后界面自动打开。以后双击只需几秒。
 
-第一次运行时，Windows 可能弹出“Windows 已保护你的电脑”。原因是程序没有购买数字签名。
+脚本只在本文件夹内创建 `.venv` 并安装依赖，不会改动系统 Python，也不需要管理员权限。
 
-处理步骤：
+目录结构：
 
-1. 点提示框里的“更多信息”。
-2. 点“仍要运行”。
-
-如果杀毒软件拦截，请把整个软件目录加入信任列表，或者换一台电脑试。软件只读写本地文件，不联网。
+```text
+D:\MOLTRACE\
+├── MOLTRACE.bat          双击启动
+├── MOLTRACE-debug.bat    启动失败时用，保留报错窗口
+├── .venv\                首次运行自动生成，不要手动改
+├── abf数据案例\          实验数据放这里，不入库
+└── output\               默认导出目录
+```
 
 ### 2.4 系统要求
 
 | 项目 | 要求 |
 |------|------|
 | 系统 | Windows 10 或 Windows 11，64 位 |
+| Python | 3.11 或更高版本 |
 | 内存 | 建议 4 GB 以上 |
-| 硬盘 | 解压后约 250 MB，另留出数据输出空间 |
+| 硬盘 | 依赖约 700 MB，另留数据输出空间 |
 | 屏幕 | 建议 1280×720 以上 |
-| 其他 | 不需要安装 Python，不需要管理员权限 |
+| 其他 | GitHub Desktop（或下载 ZIP）；不需要管理员权限 |
 
-免安装包是 Windows 64 位程序。macOS 和 Linux 可以从源码运行，见 [DEVELOPMENT.md](DEVELOPMENT.md)。
+macOS 和 Linux 可以从源码运行，见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 ### 2.5 更新与卸载
 
-**更新**：下载新版本的 zip，解压到一个新文件夹，双击新 exe。旧文件夹可以保留，方便回退。
+**更新**：打开 GitHub Desktop，点 **Fetch origin**；按钮变成 **Pull origin** 时再点一次。然后关闭软件，重新双击 `MOLTRACE.bat`。依赖有变化时脚本会自动补装。
+
+`abf数据案例/`、`output/` 和 `.venv/` 都不受更新影响。
 
 **保留参数**：在右侧“参数”面板点“存参数”，把当前参数保存为 JSON 文件（一种文本格式的参数文件）。换版本后点“读参数”即可恢复。这个文件比软件自带的“记住上次设置”更可靠。
 
@@ -720,9 +718,10 @@ y = categorical(T.Label);
 
 | 现象 | 可能原因 | 处理 |
 |------|----------|------|
-| 双击 exe 没反应 | 只拷了 exe，缺少 `_internal` | 解压完整文件夹，保持 exe 与 `_internal` 同级 |
-| 双击 exe 没反应 | 解压不完整或被杀毒软件隔离 | 重新解压；把目录加入杀毒软件信任列表 |
-| 提示“Windows 已保护你的电脑” | 没有数字签名 | 点“更多信息”→“仍要运行” |
+| 双击 `MOLTRACE.bat` 一闪就没了 | 启动报错被窗口一起关闭 | 双击 `MOLTRACE-debug.bat` 查看完整报错 |
+| 提示“没有找到 Python” | 安装时未勾选 `Add python.exe to PATH` | 重新运行 Python 安装包 → `Modify` → 勾选该项 |
+| 依赖安装失败 | 网络超时或代理拦截 | 脚本会自动改用清华镜像重试；仍失败时检查网络 |
+| 移动文件夹后打不开 | `.venv` 记录的是绝对路径 | 删除 `.venv`，重新双击 `MOLTRACE.bat` |
 | 打开文件报错 | 文件损坏或不是 `.abf` | 用 pCLAMP/Clampfit 确认文件可打开 |
 | 看不到波形 | 文件没有电流通道 | 检查采集设置；换一个文件试 |
 | 没有检出事件 | 极性、电平或阈值不对 | 先看波形；手动 Level0/Level1；试双向 |
@@ -750,7 +749,7 @@ y = categorical(T.Label);
 
 **能在 Mac 或 Linux 上用吗？**
 
-免安装包是 Windows 64 位。其他系统可以从源码运行，见 [DEVELOPMENT.md](DEVELOPMENT.md)。
+启动脚本是 Windows 版。macOS 和 Linux 可以从源码运行，见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 **软件收费吗？**
 

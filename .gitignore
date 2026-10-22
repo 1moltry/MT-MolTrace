@@ -8,6 +8,7 @@ _tmp/
 
 # --- 生成物 ---
 output/
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
