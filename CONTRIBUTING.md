@@ -1,18 +1,31 @@
 # 贡献指南
 
-本仓库由 **Huang Lab 的 Yize Liu（1moltry）** 开发与维护。以 MIT 协议开源。
+本仓库由 **Huang Lab 的 Yize Liu（1moltry）** 开发与维护。产品名 **MOLTRACE（摩尔迹）**，仓库 `MT-MolTrace`，以 MIT 协议开源。
 
 改动经 Pull Request 提交，由维护者审查后合并。协作机制（权限模型、版本号分配）见 [`DEVLOG.md`](DEVLOG.md)。
 
-## 环境准备
+## 从 Fork 开始
+
+1. 打开 <https://github.com/1moltry/MT-MolTrace>，点右上角 **Fork**。
+2. Clone 你的 Fork，并添加上游仓库：
 
 ```bash
-git clone https://github.com/1moltry/MT-MolTrace.git
+git clone https://github.com/<你的用户名>/MT-MolTrace.git
 cd MT-MolTrace
+git remote add upstream https://github.com/1moltry/MT-MolTrace.git
 pip install -e ".[dev]"
 ```
 
+3. 改动前先同步上游：
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
 实验数据 `.abf` 不入库，按 [`data/README.md`](data/README.md) 从共享盘拷贝到 `abf数据案例/`。
+
+安装后可用 `moltrace` 命令；`python -m nanopore` 是兼容旧别名。
 
 ## 分支
 

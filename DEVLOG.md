@@ -2,6 +2,8 @@
 
 格式：`## [日期] 标题` + 变更 / 测试 / 下一步。只记里程碑与关键取舍，不记过程叙述。
 
+> 产品更名说明：2026-10-22 起，本产品名为 **MOLTRACE（摩尔迹）**，仓库为 `MT-MolTrace`；下文历史记录保留旧名 SDL。
+
 ---
 
 ## 当前状态
@@ -109,6 +111,8 @@
   （发行名 `moltrace`，新增 `moltrace` 命令，保留 `nanopore` 旧别名）与构建脚本同步。
 - 仓库 remote 改为 `https://github.com/1moltry/MT-MolTrace`（与旧仓库同一提交历史）。
 - 启动脚本更名：`MOLTRACE.bat` / `MOLTRACE-debug.bat`。
+- README 重写为 GitHub 使用教程：发行包、Fork、Clone、源码运行、同步上游、Issue 反馈与 PR 流程；
+  CONTRIBUTING 增加 Fork 工作流；DEVELOPMENT 说明 `moltrace` 命令与旧别名。
 - QSettings 作用域保留旧名 `SDL-Nanopore`，避免现有用户丢失上次参数与最近文件。
 - 本地精简：删除 `__pycache__`、`.pytest_cache`、`build/release` 中间产物、
   `_tmp` 诊断输出；保留 `build/venv`、数据、`pCLAMP11.2/`、`_tmp` 参考文档与

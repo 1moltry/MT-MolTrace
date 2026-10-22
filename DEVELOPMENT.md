@@ -18,6 +18,8 @@ pip install -e ".[dev]"      # 可编辑安装，含 GUI 依赖与 pytest
 
 依赖由 `pyproject.toml` 声明：运行核心为 numpy / scipy / pandas / matplotlib / openpyxl / pyabf；GUI 另需 PyQt5 / pyqtgraph（`[gui]` 或 `[dev]` extra）。
 
+安装后可用 `moltrace` 命令；下文的 `python -m nanopore` 是等价的旧别名。
+
 ## 数据准备
 
 实验数据 `.abf` 不入库（体积大，且属实验产物）。从实验室共享盘拷到本地 `abf数据案例/` 即可——代码与文档里的示例路径都基于这个目录名。目录约定与各样例对应的异常场景见 `data/README.md`。
