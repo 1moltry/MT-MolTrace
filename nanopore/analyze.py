@@ -24,7 +24,7 @@ from .anomaly import (AnomalyResult, detect_anomalies, detect_artifact_segments,
                       merge_anomaly_results)
 from .baseline import Levels, estimate_levels, set_polarity
 from .config import PipelineConfig
-from .detect import DetectionResult, detect
+from .detect import DetectionResult, detect, resolve_detector_id
 from .features import classify_exclusions, compute_features
 from .mods import resolve_mods
 
@@ -64,7 +64,7 @@ def analyze(rec, cfg: PipelineConfig) -> AnalysisResult:
     # burst mode needs a per-sample open-pore reference so pore-state switches
     # are not read as blockades; features consume this profile only when the
     # dynamic_i0 mod is enabled
-    need_i0 = ("dynamic_i0" in mods) or (getattr(cfg, "event_mode", "level") == "burst")
+    need_i0 = ("dynamic_i0" in mods) or (resolve_detector_id(cfg) == "burst")
     i0_for_detect = None
     if need_i0:
         from .baseline_i0 import build_dynamic_baseline
@@ -73,7 +73,8 @@ def analyze(rec, cfg: PipelineConfig) -> AnalysisResult:
                                                anchor_level=lv.level0)
 
     det = detect(filtered, rec.sample_rate_hz, lv, cfg,
-                 cutoff_hz=cutoff, i0_profile=i0_for_detect)
+                 cutoff_hz=cutoff, i0_profile=i0_for_detect,
+                 voltage=rec.protocol_voltage)
 
     i0_profile = i0_for_detect if "dynamic_i0" in mods else None
 

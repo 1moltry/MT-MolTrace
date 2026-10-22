@@ -76,10 +76,11 @@ class ParamPanel(QWidget):
         self.drift_frac = _spin(0.0, 1.0, 0.05, "", 0.01)
         self.drift_iqr = _spin(1.0, 20.0, 3.0, " x", 0.5)
 
-        # --- detection variant: level vs burst (base detector) ---
+        # --- event detector selector: level / burst / plateau ---
         self.event_mode = QComboBox()
-        self.event_mode.addItem("电平法（现状）", "level")
+        self.event_mode.addItem("电平法（Clampfit）", "level")
         self.event_mode.addItem("驻留包络去抖（burst）", "burst")
+        self.event_mode.addItem("平台滞回（sweep/plateau）", "plateau")
         self.ignore_event = _spin(0.0, 2000.0, 50.0, " ms", 5.0)
         self.b_enter = _spin(0.0, 2.0, 0.30, "", 0.05)
         self.b_exit = _spin(0.0, 2.0, 0.20, "", 0.05)
@@ -90,6 +91,23 @@ class ParamPanel(QWidget):
         self.b_cross = QCheckBox("基线上下穿越（多电平）")
         self.b_occ = _spin(0.0, 1.0, 0.30, "", 0.05)
         self.b_depth = _spin(0.0, 2.0, 0.15, "", 0.05)
+
+        # --- plateau detector parameters (sugar / long-blockade signals) ---
+        self.p_enter = _spin(0.0, 5000.0, 60.0, " pA", 5.0)
+        self.p_exit = _spin(0.0, 5000.0, 15.0, " pA", 1.0)
+        self.p_open = _spin(0.0, 5000.0, 1.0, " ms", 0.5)
+        self.p_dir = QComboBox()
+        for label, value in (("自动（按极性）", "auto"), ("向下", "down"),
+                             ("向上", "up"), ("双向", "both")):
+            self.p_dir.addItem(label, value)
+        self.p_volt = QCheckBox("屏蔽电压协议段")
+        self.p_volt.setChecked(True)
+        self.p_pulse = QCheckBox("剔除脉冲清除事件")
+        self.p_pulse.setChecked(True)
+        self.p_rupt = QCheckBox("剔除炸膜/孔塌陷")
+        self.p_rupt.setChecked(True)
+        self.p_abs = _spin(0.0, 1e6, 1000.0, " pA", 100.0)
+        self.p_diff = _spin(0.0, 1e6, 500.0, " pA", 100.0)
 
         # --- mod checkboxes ---
         self.mod_boxes: dict[str, QCheckBox] = {}
@@ -149,11 +167,33 @@ class ParamPanel(QWidget):
         _tip(self.drift_iqr, "漂移不稳定阈值\n"
                               "区间 IQR ÷ 记录头 IQR ≥ 此倍数才算『不稳定』。\n"
                               "与位移阈值同时满足才判漂移（防止把平稳的孔态变化当漂移）。")
-        _tip(self.event_mode, "检测模式（底座）\n"
-                              "电平法：逐样本最近电平 + 同电平桥接（现状，默认）。\n"
+        _tip(self.event_mode, "事件检测算法（底座）\n"
+                              "电平法：逐样本最近电平 + 同电平桥接（Clampfit 语义，默认）。\n"
                               "驻留包络去抖：把一次阻孔内的毛刺、越孔、上下跳跃合并为一个事件。\n"
-                              "假设开孔电平稳定；Ala/Asp/Gln 这类慢孔态切换请用电平法。\n"
-                              "只改变分割方式，默认关，不影响底座。")
+                              "平台滞回：进入深阈值、退出浅阈值，短开孔合并；边界贴近开孔，\n"
+                              "事件内的部分恢复不会把事件切断（糖/长阻孔信号适用）。\n"
+                              "只改变事件分割方式，后处理与特征表相同。")
+        _tip(self.p_enter, "进入阻孔深度（pA）\n"
+                           "阻孔段必须至少达到这个深度，才被认定为事件；\n"
+                           "它只做验证，不决定事件边界。")
+        _tip(self.p_exit, "退出阻孔阈值（pA）\n"
+                          "事件边界定在电流回到开孔电平这个距离以内；\n"
+                          "越小越贴近开孔，事件内部分恢复越不容易被切断。")
+        _tip(self.p_open, "短开孔合并（ms）\n"
+                          "两次阻孔之间回到开孔的时间短于此值 → 合并为同一个事件。")
+        _tip(self.p_dir, "阻孔方向\n"
+                         "自动：按电平直方图推断的极性决定；\n"
+                         "双向：基线两侧的阻孔都算，适合基线上下波动的肽信号。")
+        _tip(self.p_volt, "屏蔽电压协议段\n"
+                          "命令电压偏离主体的区段（换向/清洗脉冲）不参与事件检测。")
+        _tip(self.p_pulse, "剔除脉冲清除事件\n"
+                           "终止于换向电压脉冲的阻孔被视为被电压清除，不计入分析物事件。")
+        _tip(self.p_rupt, "剔除炸膜/孔塌陷\n"
+                          "电流塌到接近 0 并持续的伪事件（膜破裂）不计入事件。")
+        _tip(self.p_abs, "电流伪迹屏蔽（绝对值）\n"
+                         "|I| 超过此值的采样被屏蔽（0=关）。用于剔除切换尖峰。")
+        _tip(self.p_diff, "电流伪迹屏蔽（跳变）\n"
+                          "相邻采样跳变超过此值的采样被屏蔽（0=关）。")
         _tip(self.ignore_event, "事件合并容差（仅电平法 · Ignore short level changes）\n"
                                 "同电平事件之间、回到开孔的间隙短于此值时合并为一个事件。\n"
                                 "调大：长阻孔更不易被噪声槽切碎；调小：更接近逐次开合。")
@@ -255,6 +295,18 @@ class ParamPanel(QWidget):
         bf.addRow("最小体内偏离 (×步长)", self.b_depth)
         bf.addRow("", self.b_cross)
 
+        self.plateau_box = QGroupBox("平台滞回（sweep/plateau）")
+        pf = QFormLayout(self.plateau_box)
+        pf.addRow("进入阻孔深度 (pA)", self.p_enter)
+        pf.addRow("退出阻孔阈值 (pA)", self.p_exit)
+        pf.addRow("短开孔合并 (ms)", self.p_open)
+        pf.addRow("阻孔方向", self.p_dir)
+        pf.addRow("", self.p_volt)
+        pf.addRow("", self.p_pulse)
+        pf.addRow("", self.p_rupt)
+        pf.addRow("伪迹屏蔽 |I| (pA)", self.p_abs)
+        pf.addRow("伪迹屏蔽 |ΔI| (pA)", self.p_diff)
+
         self.lowpass_box = QGroupBox("低通滤波")
         lf = QFormLayout(self.lowpass_box)
         lf.addRow("截止频率 (0=关)", self.lowpass)
@@ -285,6 +337,7 @@ class ParamPanel(QWidget):
         lay.addWidget(base)
         lay.addWidget(self.level_box)
         lay.addWidget(self.burst_box)
+        lay.addWidget(self.plateau_box)
         lay.addWidget(self.lowpass_box)
         lay.addWidget(self.i0_box)
         lay.addWidget(self.refined_box)
@@ -305,11 +358,13 @@ class ParamPanel(QWidget):
                   self.b_enter, self.b_exit, self.b_gap, self.b_open,
                   self.b_merge, self.b_block,
                   self.b_occ, self.b_depth, self.drift_frac, self.drift_iqr,
+                  self.p_enter, self.p_exit, self.p_open, self.p_abs, self.p_diff,
                   self.l0, self.l1):
             w.valueChanged.connect(self._emit_changed)
-        for w in (self.l0_en, self.l1_en, self.drift_en, self.b_cross):
+        for w in (self.l0_en, self.l1_en, self.drift_en, self.b_cross,
+                  self.p_volt, self.p_pulse, self.p_rupt):
             w.stateChanged.connect(self._emit_changed)
-        for w in (self.polarity, self.event_mode):
+        for w in (self.polarity, self.event_mode, self.p_dir):
             w.currentIndexChanged.connect(self._emit_changed)
         self.lab.textChanged.connect(self._emit_changed)
         for cb in self.mod_boxes.values():
@@ -368,9 +423,10 @@ class ParamPanel(QWidget):
         self._update_module_summary()
 
     def _sync_mode(self) -> None:
-        burst = self.event_mode.currentData() == "burst"
-        self.burst_box.setVisible(burst)
-        self.level_box.setVisible(not burst)
+        mode = self.event_mode.currentData()
+        self.burst_box.setVisible(mode == "burst")
+        self.plateau_box.setVisible(mode == "plateau")
+        self.level_box.setVisible(mode == "level")
         self._save_settings()
 
     def _load_settings(self) -> None:
@@ -406,15 +462,17 @@ class ParamPanel(QWidget):
 
     # ---------------- config round-trip ----------------
     def build_config(self) -> PipelineConfig:
+        detector = self.event_mode.currentData()
         return PipelineConfig(
             enabled_mods=self.enabled_ids(),
             filter_lowpass_hz=self.lowpass.value() or None,
             level0=self.l0.value() if self.l0_en.isChecked() else None,
             level1=self.l1.value() if self.l1_en.isChecked() else None,
             polarity=self.polarity.currentData(),
+            detector=detector,
             ignore_duration_ms=self.ignore.value(),
             ignore_event_duration_ms=self.ignore_event.value(),
-            event_mode=self.event_mode.currentData(),
+            event_mode="burst" if detector == "burst" else "level",
             burst_enter_frac=self.b_enter.value(),
             burst_exit_frac=self.b_exit.value(),
             burst_min_gap_ms=self.b_gap.value(),
@@ -424,6 +482,15 @@ class ParamPanel(QWidget):
             burst_min_occupied_frac=self.b_occ.value(),
             burst_min_depth_frac=self.b_depth.value(),
             burst_cross_baseline=self.b_cross.isChecked(),
+            plateau_direction=self.p_dir.currentData(),
+            plateau_enter_depth_pA=self.p_enter.value(),
+            plateau_exit_depth_pA=self.p_exit.value(),
+            plateau_min_open_ms=self.p_open.value(),
+            plateau_exclude_voltage=self.p_volt.isChecked(),
+            plateau_exclude_pulse_cleared=self.p_pulse.isChecked(),
+            plateau_exclude_rupture=self.p_rupt.isChecked(),
+            plateau_artifact_abs_pA=self.p_abs.value(),
+            plateau_artifact_diff_pA=self.p_diff.value(),
             level_contribution=self.contrib.value(),
             min_toff_ms=self.min_toff.value(),
             event_plateau_min_frac=self.plateau.value(),
@@ -447,7 +514,18 @@ class ParamPanel(QWidget):
         self.b_occ.setValue(cfg.burst_min_occupied_frac)
         self.b_depth.setValue(cfg.burst_min_depth_frac)
         self.b_cross.setChecked(cfg.burst_cross_baseline)
-        idx = self.event_mode.findData(cfg.event_mode)
+        self.p_enter.setValue(cfg.plateau_enter_depth_pA)
+        self.p_exit.setValue(cfg.plateau_exit_depth_pA)
+        self.p_open.setValue(cfg.plateau_min_open_ms)
+        self.p_volt.setChecked(cfg.plateau_exclude_voltage)
+        self.p_pulse.setChecked(cfg.plateau_exclude_pulse_cleared)
+        self.p_rupt.setChecked(cfg.plateau_exclude_rupture)
+        self.p_abs.setValue(cfg.plateau_artifact_abs_pA)
+        self.p_diff.setValue(cfg.plateau_artifact_diff_pA)
+        idx = self.p_dir.findData(cfg.plateau_direction)
+        self.p_dir.setCurrentIndex(idx if idx >= 0 else 0)
+        detector = cfg.detector or cfg.event_mode
+        idx = self.event_mode.findData(detector)
         self.event_mode.setCurrentIndex(idx if idx >= 0 else 0)
         self._sync_mode()
         self.pre.setValue(cfg.pre_event_ms)

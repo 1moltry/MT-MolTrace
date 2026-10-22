@@ -554,18 +554,62 @@ def detect_events_burst(
     return DetectionResult(events, levels, sample_rate_hz, float(level0), level0_refs)
 
 
+def resolve_detector_id(cfg) -> str:
+    """Resolve the event detector id.
+
+    ``cfg.detector`` is the explicit selector (level / burst / plateau). When it
+    is empty (older configs), fall back to the legacy ``event_mode`` flag.
+    """
+    det = str(getattr(cfg, "detector", "") or "")
+    if det in ("level", "burst", "plateau"):
+        return det
+    return "burst" if getattr(cfg, "event_mode", "level") == "burst" else "level"
+
+
 def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
-           cutoff_hz: float | None = None, i0_profile=None) -> DetectionResult:
-    """Dispatch on ``cfg.event_mode``.
+           cutoff_hz: float | None = None, i0_profile=None,
+           voltage: np.ndarray | None = None) -> DetectionResult:
+    """Dispatch on the selected event detector.
 
     ``lv`` is duck-typed (needs ``.level0`` / ``.level1`` / ``.polarity``), so
     both the pipeline and the GUI worker share one entry point and can never
     drift on parameter wiring. ``i0_profile`` (optional) gives burst mode a
     per-sample open-pore reference so pore-state switches are not mistaken for
-    blockades.
+    blockades. ``voltage`` (optional) lets the plateau detector mask protocol
+    segments and drop pulse-cleared events.
     """
     cutoff = cutoff_hz if cutoff_hz is not None else cfg.filter_lowpass_hz
-    if getattr(cfg, "event_mode", "level") == "burst":
+    det_id = resolve_detector_id(cfg)
+
+    if det_id == "plateau":
+        from .detect_plateau import detect_plateau
+
+        direction = str(getattr(cfg, "plateau_direction", "auto") or "auto")
+        if direction == "auto":
+            pol = int(getattr(lv, "polarity", 0) or 0)
+            direction = "down" if pol < 0 else ("up" if pol > 0 else "both")
+        return detect_plateau(
+            current, sample_rate_hz, lv.level0,
+            voltage=voltage,
+            cutoff_hz=cutoff if cutoff is not None else getattr(cfg, "plateau_cutoff_hz", None),
+            direction=direction,
+            enter_depth_pA=cfg.plateau_enter_depth_pA,
+            exit_depth_pA=cfg.plateau_exit_depth_pA,
+            min_open_ms=cfg.plateau_min_open_ms,
+            min_dwell_ms=cfg.plateau_min_dwell_ms,
+            dwell_max_ms=cfg.plateau_dwell_max_ms,
+            depth_min_pA=cfg.plateau_depth_min_pA,
+            depth_max_pA=cfg.plateau_depth_max_pA,
+            exclude_voltage=cfg.plateau_exclude_voltage,
+            voltage_tol_mv=cfg.plateau_voltage_tol_mv,
+            exclude_pulse_cleared=cfg.plateau_exclude_pulse_cleared,
+            pulse_tol_ms=cfg.plateau_pulse_tol_ms,
+            exclude_rupture=cfg.plateau_exclude_rupture,
+            artifact_abs_pA=cfg.plateau_artifact_abs_pA,
+            artifact_diff_pA=cfg.plateau_artifact_diff_pA,
+        )
+
+    if det_id == "burst":
         return detect_events_burst(
             current, sample_rate_hz, lv.level0, lv.level1, lv.polarity,
             cutoff_hz=cutoff,

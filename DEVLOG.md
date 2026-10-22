@@ -100,6 +100,43 @@
 
 ---
 
+## [2026-10-22] v2.1：三种事件检测算法整合进同一软件
+
+**变更**
+- 新增 `nanopore/detect_plateau.py`：移植糖项目的平台滞回检测（进入深阈值 / 退出浅阈值 /
+  短开孔合并 + 电压屏蔽 + 脉冲清除 + 炸膜剔除），并用 `depth_pA = amp - ref` 统一 SDL 符号约定。
+- `nanopore/detect.py`：新增 `resolve_detector_id(cfg)`；`detect()` 按
+  `cfg.detector = level / burst / plateau` 分派；保留 `event_mode` 作为旧配置回退。
+- `PipelineConfig`：新增 `detector` 与 16 个 `plateau_*` 参数；默认仍为电平法，现有行为不变。
+- GUI：右栏“检测算法”下拉增加“平台滞回（sweep/plateau）”，参数组随算法显隐；
+  存/读参数与 QSettings 同步覆盖新字段。
+- CLI：`--detector {level,burst,plateau}` + `--plateau-*` / `--keep-voltage` /
+  `--keep-pulse-cleared` / `--keep-rupture`；`--event-mode` 保留为旧别名。
+- README 增加“三种事件检测算法”对照表；版本 `2.0.1 → 2.1.0`。
+
+**测试**
+- 全量 `pytest` **190 passed**（新增平台法 6 例：部分恢复不切碎、上下/双向、炸膜剔除、
+  脉冲清除、分派、特征整合）。
+- 糖数据 `GalNAc-1.abf`：`--detector plateau --plateau-direction down` → **977 事件**，
+  与 `sweeps_all` 现有语料一致。
+- 6 个肽样本初步对比（kept / 原始）：
+  - mixture：level 204/207，burst 207/210，plateau 216/686
+  - Ala：37/44，37/46，35/215
+  - Asp：69/72，77/92，97/313
+  - Gln：6/6，6/6，8/25
+  - His：277/286，297/309，243/267
+  - ARNKRS：12/46，15/81，28/1147
+  平台法在浅/短事件上更敏感（原始数高），`min_toff` 过滤后与电平法同量级；
+  Asp/ARNKRS 的 kept 差异需逐条核查，**暂不切换默认**。
+- GUI 离屏冒烟：三种算法切换、`build_config`/`load_config` 往返通过。
+
+**下一步**
+- 逐条核查 Asp/ARNKRS 平台法多出的事件（波形 + 事件表）。
+- 增加“算法对比”视图（同文件并排显示三法边界与计数）。
+- 重建 v2.1.0 发行包；在真机 GUI 过目平台法参数组布局。
+
+---
+
 ## [2026-10-22] 算法审计：事件检测收敛 + 单事件描述层边界
 
 **变更**

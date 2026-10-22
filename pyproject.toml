@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nanopore-merged-lab"
-version = "2.0.1"
+version = "2.1.0"
 description = "Merged nanopore ABF analysis and interactive review suite"
 authors = [
     { name = "Yize Liu (1moltry), Huang Lab" },

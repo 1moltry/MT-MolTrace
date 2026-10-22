@@ -1,7 +1,8 @@
 # PLAN — 事件检测收敛与单事件描述层
 
-> 状态：**部分实施**（2026-10-22）。糖项目 `npsweep` 已完成事件检测收敛与描述层骨架；
-> SDL `nanopore` 暂保留电平法，待肽样本验证后再切。
+> 状态：**v2.1 已实施**（2026-10-22）。糖项目 `npsweep` 完成事件检测收敛与描述层骨架；
+> SDL `nanopore` 已把平台法接入为第三种可选检测器（`detector=level/burst/plateau`），
+> 默认仍是电平法，现有行为不变。
 > 关联：`DEVLOG.md` [2026-10-22]；糖项目 `docs/EVENT_DESCRIPTION.md`。
 
 ## 0. 目标
@@ -69,15 +70,19 @@ class EventDescriber:
 
 1. **糖项目（已完成）**：删 Clampfit-lite；平台法唯一；新增 `describe.py`；σ 估计修复；
    37 tests；GalNAc-1 重提取逐值一致。
-2. **SDL 肽样本验证（待做）**：在 Ala/Asp/Gln/His/mixture/ARNKRS 上跑平台法
-   （向下/向上/双向），与电平法对比事件数、边界、异常剔除。若一致或更优，
-   把 SDL 默认切到平台法；否则把平台法作为“平台模式”保留，电平法作为“电平模式”，
-   二者共用同一注册表与后处理。
-3. **统一注册表**：`Detector` 接口（id/label/capabilities/params/detect）供 GUI/CLI 共用；
-   平台法与电平法是同一实现的两个预设，不是两份代码。
-4. **描述层迁移**：`npsweep/describe.py` → 共享 core；`cutlab.core.EventView` 改为复用；
+2. **SDL 集成（已完成 v2.1）**：
+   - 新增 `nanopore/detect_plateau.py`（平台滞回 + 电压屏蔽 + 脉冲清除 + 炸膜剔除）；
+   - `nanopore/detect.py` 增加 `resolve_detector_id` 与 plateau 分派；
+   - `PipelineConfig.detector` + 平台法参数；GUI 检测算法下拉 + 平台参数组；
+   - CLI `--detector` 与平台法参数；版本 `2.1.0`；
+   - 糖数据 GalNAc-1 用 `--detector plateau` 得到 **977 事件**，与现有语料一致。
+3. **肽样本验证（进行中）**：6 样本初步对比见 DEVLOG；kept 事件数在 Asp/ARNKRS 上有差异，
+   需逐条核查后再决定是否把 plateau 设为某些数据的默认。**默认仍为 level。**
+4. **统一注册表（待做）**：`Detector` 接口（id/label/capabilities/params/detect）供 GUI/CLI
+   共用；平台法与电平法是同一实现的两个预设，不是两份代码。
+5. **描述层迁移（待做）**：`npsweep/describe.py` → 共享 core；`cutlab.core.EventView` 改为复用；
    SDL GUI 增加“描述器”下拉与事件内段叠加。
-5. **删除重复**：npsweep Clampfit-lite 已删；SDL 内的重复编排按 `analyze()` 统一。
+6. **删除重复**：npsweep Clampfit-lite 已删；SDL 内的重复编排按 `analyze()` 统一。
 
 ## 5. 验收
 

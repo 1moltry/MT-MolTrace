@@ -69,6 +69,29 @@ class PipelineConfig:
     burst_min_depth_frac: float = 0.15     # burst: ... unless its body median is deflected by
                                            # at least this * step (keeps shallow sustained states)
 
+    # --- event detector selection ---
+    # "" = legacy: derived from event_mode (level/burst); explicit values let the
+    # GUI/CLI choose one detector from the shared registry.
+    detector: str = ""
+
+    # --- plateau detector (detector="plateau"; ported from npsweep) ---
+    plateau_direction: str = "auto"        # auto (from polarity) / down / up / both
+    plateau_enter_depth_pA: float = 60.0   # a run must reach this depth to be an event
+    plateau_exit_depth_pA: float = 15.0    # boundary sits here (close to open pore)
+    plateau_min_open_ms: float = 1.0       # returns shorter than this do not split an event
+    plateau_min_dwell_ms: float = 0.0      # detector-side dwell floor (0 = leave to min_toff)
+    plateau_dwell_max_ms: float = 1e12
+    plateau_depth_min_pA: float = 0.0
+    plateau_depth_max_pA: float = 1e12
+    plateau_exclude_voltage: bool = True   # mask protocol-voltage segments
+    plateau_voltage_tol_mv: float = 20.0
+    plateau_exclude_pulse_cleared: bool = True  # drop events ended by a voltage pulse
+    plateau_pulse_tol_ms: float = 50.0
+    plateau_exclude_rupture: bool = True   # drop membrane-rupture / pore-collapse events
+    plateau_artifact_abs_pA: float = 1000.0  # mask |I| above this (0 = off)
+    plateau_artifact_diff_pA: float = 500.0  # mask |dI| above this (0 = off)
+    plateau_cutoff_hz: float | None = None   # filter cutoff for edge trimming
+
     # --- anomaly detection (mod "anomaly") ---
     jump_min_ms: float = 50.0          # macro: sustained shift must persist at least this long
     noise_sigma_mult: float = 4.0      # macro: sliding noise std above this multiple of robust sigma marks jitter

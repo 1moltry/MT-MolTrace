@@ -1,8 +1,8 @@
 """SDL nanopore automated analysis pipeline.
 
-Level/threshold-based single-channel event detection with automatic
-baseline/level estimation, anomaly detection, feature extraction (column names
-follow the lab feature-table spec), and plotting.
+Three selectable event detectors (level / burst / plateau) share one
+baseline/estimation -> detection -> feature -> export pipeline. Feature-table
+columns follow the lab spec. Anomaly detection and plotting are optional mods.
 """
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"

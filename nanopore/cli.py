@@ -36,10 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="event search direction (default auto from the level histogram); "
                         "'both' enables multi-level detection on either side of the baseline "
                         "(needed for peptides like ARNKRS whose blockades go both ways)")
+    r.add_argument("--detector", choices=("level", "burst", "plateau"), default=None,
+                   help="event detector: level (Clampfit semantics, default), burst "
+                        "(dwell-envelope debounce), or plateau (hysteresis platform; keeps "
+                        "partial recoveries inside one event)")
     r.add_argument("--event-mode", choices=("level", "burst"), default=None,
-                   help="detection variant: 'level' = threshold/level runs (default); "
-                        "'burst' = dwell-envelope debounce (merges glitches and open-pore "
-                        "hopping into one event)")
+                   help="legacy alias for --detector (kept for older configs/scripts)")
     r.add_argument("--burst-enter-frac", type=float, default=None,
                    help="burst: |I-I0| > this x level-step enters a blockade (default 0.30)")
     r.add_argument("--burst-exit-frac", type=float, default=None,
@@ -63,6 +65,26 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--burst-min-depth-frac", type=float, default=None,
                    help="burst: ...unless the body median is deflected by this x step "
                         "(default 0.15; keeps shallow sustained states)")
+    r.add_argument("--plateau-direction", choices=("auto", "down", "up", "both"), default=None,
+                   help="plateau: blockade direction; auto follows --polarity (default auto)")
+    r.add_argument("--plateau-enter-depth", type=float, default=None,
+                   help="plateau: a run must reach this depth (pA) to be an event (default 60)")
+    r.add_argument("--plateau-exit-depth", type=float, default=None,
+                   help="plateau: event boundary sits at this distance from the open pore "
+                        "(pA; default 15; smaller keeps partial recoveries inside an event)")
+    r.add_argument("--plateau-min-open-ms", type=float, default=None,
+                   help="plateau: returns to the open pore shorter than this do not split "
+                        "an event (default 1 ms)")
+    r.add_argument("--keep-voltage", action="store_true",
+                   help="plateau: do NOT mask protocol-voltage segments")
+    r.add_argument("--keep-pulse-cleared", action="store_true",
+                   help="plateau: keep events terminated by a voltage pulse")
+    r.add_argument("--keep-rupture", action="store_true",
+                   help="plateau: keep membrane-rupture / pore-collapse pseudo-events")
+    r.add_argument("--plateau-artifact-abs", type=float, default=None,
+                   help="plateau: mask samples with |I| above this (pA; 0 disables; default 1000)")
+    r.add_argument("--plateau-artifact-diff", type=float, default=None,
+                   help="plateau: mask samples whose |dI| exceeds this (pA; 0 disables; default 500)")
     r.add_argument("--save-config", default=None, help="write the effective config to this JSON path and exit")
 
     g = sub.add_parser("gui", help="launch the interactive desktop GUI")
@@ -100,6 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         cfg.polarity = {"up": 1, "down": -1, "both": 0}[args.polarity]
     if args.event_mode is not None:
         cfg.event_mode = args.event_mode
+        if not cfg.detector:
+            cfg.detector = args.event_mode
+    if args.detector is not None:
+        cfg.detector = args.detector
+        cfg.event_mode = "burst" if args.detector == "burst" else "level"
     for field, value in (("burst_enter_frac", args.burst_enter_frac),
                          ("burst_exit_frac", args.burst_exit_frac),
                          ("burst_min_gap_ms", args.burst_min_gap_ms),
@@ -107,11 +134,23 @@ def main(argv: list[str] | None = None) -> int:
                          ("burst_open_cover", args.burst_open_cover),
                          ("burst_merge_max_ms", args.burst_merge_max_ms),
                          ("burst_min_occupied_frac", args.burst_min_occupied_frac),
-                         ("burst_min_depth_frac", args.burst_min_depth_frac)):
+                         ("burst_min_depth_frac", args.burst_min_depth_frac),
+                         ("plateau_direction", args.plateau_direction),
+                         ("plateau_enter_depth_pA", args.plateau_enter_depth),
+                         ("plateau_exit_depth_pA", args.plateau_exit_depth),
+                         ("plateau_min_open_ms", args.plateau_min_open_ms),
+                         ("plateau_artifact_abs_pA", args.plateau_artifact_abs),
+                         ("plateau_artifact_diff_pA", args.plateau_artifact_diff)):
         if value is not None:
             setattr(cfg, field, value)
     if args.burst_cross_baseline:
         cfg.burst_cross_baseline = True
+    if args.keep_voltage:
+        cfg.plateau_exclude_voltage = False
+    if args.keep_pulse_cleared:
+        cfg.plateau_exclude_pulse_cleared = False
+    if args.keep_rupture:
+        cfg.plateau_exclude_rupture = False
     if args.save_config:
         cfg.save(args.save_config)
         print(f"config saved: {args.save_config}")
