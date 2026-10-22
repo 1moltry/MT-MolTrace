@@ -111,6 +111,7 @@
 - GUI：参数面板增加“事件指纹”组；切片图叠加分段线与段电平；右侧分段表；工具栏“指纹分段”开关。选中事件按需计算并缓存，避免整文件阻塞。
 - CLI：`--describe dp_bic|scalar`、`--fp-param KEY=VALUE`。
 - DP 内层用 numba 编译（可选；缺失时退回 numpy），长事件约 0.3–0.5 s/个；numba 加入 `gui` / `dev` extras。
+- 构建脚本不再排除 `numba` / `llvmlite`，发行包内保留加速内核。
 - 版本 `3.0.0 → 3.1.0`；README/tutorial 更新，明确“只做分段，不做指纹分类/识别”。
 
 **测试**：新增 14 条（合成三段真值、JSON/Excel、按需 worker、GUI 叠加）；全量 **207 passed**（46 s）。

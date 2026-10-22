@@ -62,13 +62,13 @@ HIDDEN_IMPORTS = (
 
 # Trim the bundle: Qt modules and dev tooling this GUI never touches. Building
 # in a clean venv already keeps Anaconda extras out; this list is belt and braces.
+# numba/llvmlite are intentionally kept: they compile the DP kernel used by the
+# event-fingerprint describe mod (without them it falls back to slow numpy).
 EXCLUDES = (
     "tkinter",
     "IPython",
     "pytest",
     "cupy",
-    "numba",
-    "llvmlite",
     "panel",
     "bokeh",
     "holoviews",
