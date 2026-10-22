@@ -20,9 +20,10 @@ from dataclasses import asdict, fields
 from pathlib import Path
 
 from PyQt5.QtCore import QSettings, pyqtSignal
-from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
-                             QFormLayout, QGroupBox, QHBoxLayout, QLineEdit,
-                             QPushButton, QTabWidget, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+                             QDoubleSpinBox, QFileDialog, QFormLayout,
+                             QGroupBox, QHBoxLayout, QLineEdit, QPushButton,
+                             QScrollArea, QTabWidget, QVBoxLayout, QWidget)
 
 from ..config import PipelineConfig
 from ..mods import CATEGORIES, MODS, ORDER, resolve_mods
@@ -603,3 +604,32 @@ class ParamPanel(QWidget):
             controller.set_config(cfg)
             self.load_config(cfg)
             bus.status.emit(f"参数已读取: {path}")
+
+
+class ParamDialog(QDialog):
+    """Modal parameter editor used by the batch and comparison dialogs.
+
+    Keeps those entry points self-contained: a user who starts from the home
+    workbench can edit detection parameters without first opening a file.
+    """
+
+    def __init__(self, cfg: PipelineConfig, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("检测参数")
+        self.resize(460, 760)
+        self.panel = ParamPanel()
+        self.panel.load_config(cfg)
+        for w in (self.panel.run, self.panel.save, self.panel.load):
+            w.hide()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.panel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        lay = QVBoxLayout(self)
+        lay.addWidget(scroll, 1)
+        lay.addWidget(buttons)
+
+    def config(self) -> PipelineConfig:
+        return self.panel.build_config()

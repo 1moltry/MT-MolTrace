@@ -105,9 +105,12 @@ class BatchDialog(QDialog):
         self.detector.currentIndexChanged.connect(self._on_detector)
         self.algo_note = QLabel("")
         self.algo_note.setStyleSheet("color:#57606a;")
+        self.btn_params = QPushButton("编辑参数…")
+        self.btn_params.clicked.connect(self._edit_params)
         algo_row = QHBoxLayout()
         algo_row.addWidget(QLabel("检测算法"))
         algo_row.addWidget(self.detector)
+        algo_row.addWidget(self.btn_params)
         algo_row.addWidget(self.algo_note, 1)
         self._on_detector()
 
@@ -193,6 +196,19 @@ class BatchDialog(QDialog):
             QDesktopServices.openUrl(QUrl.fromLocalFile(out))
         else:
             self._log("输出目录还不存在，先开始处理或选择目录。")
+
+    def _edit_params(self) -> None:
+        from .parampanel import ParamDialog
+
+        dlg = ParamDialog(self._cfg, self)
+        if dlg.exec_():
+            self._cfg = dlg.config()
+            det = self._cfg.detector or self._cfg.event_mode
+            self.detector.blockSignals(True)
+            idx = self.detector.findData(det)
+            self.detector.setCurrentIndex(idx if idx >= 0 else 0)
+            self.detector.blockSignals(False)
+            self._on_detector()
 
     def selected_files(self) -> list[Path]:
         items = [self.files.item(i).text() for i in range(self.files.count())]

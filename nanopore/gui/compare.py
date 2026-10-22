@@ -178,6 +178,9 @@ class CompareDialog(QDialog):
             self.checks[det] = cb
             row_algos.addWidget(cb)
         row_algos.addStretch(1)
+        self.btn_params = QPushButton("编辑参数…")
+        self.btn_params.clicked.connect(self._edit_params)
+        row_algos.addWidget(self.btn_params)
         self.btn_run = QPushButton("开始对比")
         self.btn_run.clicked.connect(self._run)
         row_algos.addWidget(self.btn_run)
@@ -233,6 +236,14 @@ class CompareDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "选择 .abf", "", "ABF (*.abf)")
         if path:
             self.file_edit.setText(path)
+
+    def _edit_params(self) -> None:
+        from .parampanel import ParamDialog
+
+        dlg = ParamDialog(self._cfg, self)
+        if dlg.exec_():
+            self._cfg = dlg.config()
+            self.status.setText("参数已更新；点“开始对比”重新运行。")
 
     def _selected(self) -> list[str]:
         return [det for det, _ in ALGOS if self.checks[det].isChecked()]
