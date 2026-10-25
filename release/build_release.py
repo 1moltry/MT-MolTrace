@@ -58,6 +58,9 @@ HIDDEN_IMPORTS = (
     "openpyxl",
     "matplotlib.pyplot",
     "matplotlib.backends.backend_agg",
+    # explicit package import: the fingerprint layer registers its describers
+    # on import, and the GUI imports it lazily inside worker methods
+    "nanopore.fingerprint",
 )
 
 # Trim the bundle: Qt modules and dev tooling this GUI never touches. Building

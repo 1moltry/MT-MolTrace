@@ -35,6 +35,7 @@
 **发行打包 完成**：`release/build_release.py` 一键产出 Windows 免安装 exe + zip（干净源码树，无内部文件）；README 改为用户向，开发文档移入 `DEVELOPMENT.md`。见下方 [2026-10-19]。
 **v3.0.0 完成**：首页工作台 + 三种检测算法统一入口 + 算法对比 + 批量参数编辑；`pytest` 193 passed。
 **阶段 1-2 工程收敛 完成**：统一检测器目录与配置单一真值；异常识别保持可选且与 burst 等检测边界彻底分开；检测器剔除可追溯。见下方 [2026-10-25]。
+**阶段 3 描述上下文与稳定身份 完成**：描述层改吃 `AnalysisResult`（分析波形 / 动态 I0 / 电压），新增 `source_id` + `event_key`，指纹与波形导出可互相回溯。见下方 [2026-10-25]。
 
 ---
 
@@ -101,6 +102,24 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-25] 阶段 3：描述上下文、稳定事件身份与导出溯源
+
+**变更**
+- 新增 `nanopore/fingerprint/`：`contracts`（事件身份、EventView、Segment、EventDescription、RunManifest、序列化）、`context`（从 `AnalysisResult` 建视图）、`registry`（描述器注册与成熟度）、`engine`（参数解析、缓存键、结果补全）、`builtin`（scalar / dp_bic）。`describe.py` 保留为兼容门面。
+- 描述层不再自行读 ABF：`analyze()` 把 `AnalysisResult` 传给描述器。`EventView` 同时携带分析波形（开低通即滤波后）与原始波形，并记录动态 I0 窗口、电压窗口、`i_open`/`i_blockade`/`sigma_open` 的来源、事件方向、检测器版本与参数摘要、分析配置摘要。
+- 事件身份：`source_id` = ABF 内容 SHA-256（不可读时 path+size+mtime，合成信号再并入波形摘要）；`event_key` = `sha1(source_id|fs|start_sample|end_sample)[:16]`，不含检测器与行号。旧 `event_id` 保留为 `legacy_event_id`，界面序号不变。
+- 缓存键改为 `(event_key, describer, version, params_hash, data_hash)`；GUI 的 `DescribeWorker` 改为消费 `AnalysisResult`，按该键缓存，切换描述器或参数即失效。
+- 导出：`_fingerprints.xlsx` 旧列顺序不变，追加事件键、`source_id`、相对/全局采样、波形来源、描述器版本、参数摘要、覆盖度；JSON `schema_version` 升到 `1.1`，旧键保留并新增 `manifest`；`_events.mat` 每事件带 `event_key`、顶层带 `source_id`。
+- `DetectorSpec` 增加 `version`；`pyproject` 的 `packages` 加入 `nanopore.fingerprint`（PyInstaller 显式导入）。
+
+**测试**：新增 20 条（契约 7 / 上下文 8 / 导出 5），覆盖内容寻址、改剔除阈值后事件键不变、缓存键随参数与数据变化、低通/动态 I0/电压切片、全局坐标、旧列顺序与三处导出的键一致。全量 249 passed（快检 194、GUI 45、集成 10）。真实 `Ala.abf`：`min_toff` 0→50 ms 时 34 个共同事件键全部一致；37 个保留事件在 xlsx / JSON / `.mat` 中的键完全一致，`source_id` 一致。描述耗时与基线提交同量级（30 s vs 34 s，37 事件）。
+
+**兼容**：旧 `event_id` 语义、旧 Excel 列、旧 JSON 键、`describe_rows` / `make_event_view(rec, row)` 旧调用均保留；`describe_rows` 路径明确标记 `trace_source="raw"`。
+
+**下一步**：阶段 4——方向感知的分段边界、整数采样与覆盖、BIC 过分割评测，再进入标注闭环。
 
 ---
 

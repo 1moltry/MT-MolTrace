@@ -366,7 +366,7 @@ class MainWindow(QMainWindow):
         self.wave.focus_event(float(row["t1"]), float(row["t2"]))
         desc = None
         if number is not None:
-            desc = c.desc_cache.get(number)
+            desc = c.cached_description(number - 1)
         sr = c.rec.sample_rate_hz if c.rec is not None else 0.0
         self.slice.set_row(row, c.rec.current if c.rec is not None else None,
                            sr, number=number, desc=desc)

@@ -44,16 +44,33 @@ FINGERPRINT_SEGMENT_COLUMNS = [
     "level_pA", "level_rel_pA", "level_norm", "amp_pA", "snr", "tau_ms",
 ]
 
+#: Schema 1.1 additions. Old columns keep their order; new columns append.
+FINGERPRINT_SEGMENT_COLUMNS_V11 = [
+    "event_key", "source_id", "start_sample", "end_sample",
+    "start_global", "end_global", "fs_hz", "trace_source",
+    "describer_version", "params_hash", "attrs_json",
+]
+
+FINGERPRINT_EVENT_COLUMNS_V11 = [
+    "event_key", "source_id", "legacy_event_id",
+    "event_start_sample", "event_end_sample", "fs_hz",
+    "describer_version", "params_hash", "trace_source",
+    "schema_version", "coverage_frac", "attrs_json",
+]
+
 
 def write_fingerprints(descs, out_dir: Path, stem: str, *, fs: float,
-                       source: str) -> dict[str, Path]:
+                       source: str, source_id: str = "") -> dict[str, Path]:
     """Write ``<stem>_fingerprints.xlsx`` (flat tables) and ``.json`` (nested).
 
     The Excel file carries one row per segment plus one row per event, so the
     lab can inspect segments without parsing JSON. The JSON keeps the full
-    contract for downstream matching/ML work.
+    contract for downstream matching/ML work. Old column order is preserved;
+    schema 1.1 columns (event key, global samples, provenance) are appended.
     """
-    from .describe import descriptions_to_json, dumps
+    import json
+
+    from .fingerprint import descriptions_to_json, dumps
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -73,23 +90,54 @@ def write_fingerprints(descs, out_dir: Path, stem: str, *, fs: float,
                 "amp_pA": seg.attrs.get("amp_pA"),
                 "snr": seg.attrs.get("snr"),
                 "tau_ms": seg.attrs.get("tau_ms"),
+                # --- schema 1.1 ---
+                "event_key": d.event_key,
+                "source_id": d.source_id,
+                "start_sample": seg.start,
+                "end_sample": seg.end,
+                "start_global": seg.start_global,
+                "end_global": seg.end_global,
+                "fs_hz": d.fs_hz,
+                "trace_source": d.trace_source,
+                "describer_version": d.describer_version,
+                "params_hash": d.params_hash,
+                "attrs_json": json.dumps(seg.attrs, ensure_ascii=False, default=str),
             })
         row = {"event_id": d.event_id, "describer": d.describer,
                "valid": d.quality.get("valid", True),
                "reason": d.quality.get("reason", "")}
         row.update({f"f_{k}": v for k, v in d.features.items()})
+        row.update({
+            # --- schema 1.1 ---
+            "event_key": d.event_key,
+            "source_id": d.source_id,
+            "legacy_event_id": d.legacy_event_id,
+            "event_start_sample": d.event_start,
+            "event_end_sample": d.event_end,
+            "fs_hz": d.fs_hz,
+            "describer_version": d.describer_version,
+            "params_hash": d.params_hash,
+            "trace_source": d.trace_source,
+            "schema_version": d.schema_version,
+            "coverage_frac": d.coverage.get("coverage_frac"),
+            "attrs_json": json.dumps(d.attrs, ensure_ascii=False, default=str),
+        })
         ev_rows.append(row)
 
     xlsx = out_dir / f"{stem}_fingerprints.xlsx"
     json_path = out_dir / f"{stem}_fingerprints.json"
     with pd.ExcelWriter(xlsx, engine="openpyxl") as xw:
         pd.DataFrame(ev_rows).to_excel(xw, sheet_name="events", index=False)
-        pd.DataFrame(seg_rows, columns=FINGERPRINT_SEGMENT_COLUMNS).to_excel(
-            xw, sheet_name="segments", index=False)
+        pd.DataFrame(seg_rows,
+                     columns=FINGERPRINT_SEGMENT_COLUMNS
+                     + FINGERPRINT_SEGMENT_COLUMNS_V11
+                     ).to_excel(xw, sheet_name="segments", index=False)
         params = descs[0].params if descs else {}
         pd.DataFrame([{"key": k, "value": str(v)} for k, v in params.items()]).to_excel(
             xw, sheet_name="params", index=False)
-    json_path.write_text(dumps(descriptions_to_json(descs, source)), encoding="utf-8")
+    json_path.write_text(
+        dumps(descriptions_to_json(descs, source, source_id=source_id, fs_hz=fs)),
+        encoding="utf-8")
     return {"xlsx": xlsx, "json": json_path}
 
 
@@ -350,6 +398,7 @@ def write_event_waveforms(
     label: str = "",
     source_file: str = "",
     units: str = "",
+    source_id: str = "",
 ) -> None:
     """Write each kept event's raw current samples to a MATLAB .mat file.
 
@@ -358,8 +407,14 @@ def write_event_waveforms(
     MATLAB never has to re-derive the boundary from the timestamps. ``df`` is
     the kept-event feature table; sample boundaries follow the same
     ``round(t * sr)`` rule as :func:`nanopore.features.compute_features`.
+
+    When ``source_id`` is given, each event also carries ``event_key`` — the
+    same key as the fingerprint Excel/JSON — so a waveform can be traced back
+    to its description (and vice versa).
     """
     from scipy.io import savemat
+
+    from .fingerprint import event_key as make_event_key
 
     sr = float(sample_rate_hz)
     n = len(current)
@@ -379,6 +434,7 @@ def write_event_waveforms(
             "t2_s": float(t2),
             "fs_hz": sr,
             "current_pA": np.asarray(current[s:e], dtype=float),
+            "event_key": make_event_key(source_id, sr, s, e) if source_id else "",
         })
     # explicit 2-D object array: an empty table must still load as a 1x0 cell
     # rather than a 0x0 one, so MATLAB can index events{1} safely
@@ -387,6 +443,7 @@ def write_event_waveforms(
         events[0, i] = ev
     savemat(path, {
         "source_file": source_file,
+        "source_id": source_id,
         "label": label,
         "units": units,
         "fs_hz": sr,

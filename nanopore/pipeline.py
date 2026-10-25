@@ -59,15 +59,26 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
     write_events_xlsx(res.df, res.anom.regions if res.anom else [],
                       out_dir / f"{stem}_events.xlsx", excluded=res.df_excluded)
 
+    # One content hash per file, shared by every export that needs stable
+    # event identity (fingerprints and the MATLAB waveform file).
+    source_id = ""
+    if "describe" in mods or "waveform_export" in mods:
+        from .fingerprint import source_id_for_rec
+
+        source_id = source_id_for_rec(rec)
+
     if "describe" in mods and res.descs is not None:
         write_fingerprints(res.descs, out_dir, stem, fs=rec.sample_rate_hz,
-                           source=abf_path.name)
+                           source=abf_path.name, source_id=source_id)
 
     if "waveform_export" in mods:
+        # The waveform file carries the same event_key as the fingerprint
+        # export, so a MATLAB event can be traced back to its description.
         write_event_waveforms(
             res.df, rec.current, rec.sample_rate_hz,
             out_dir / f"{stem}_events.mat",
             label=label, source_file=abf_path.name, units=rec.units,
+            source_id=source_id,
         )
 
     if "plots" in mods:

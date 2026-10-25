@@ -47,6 +47,7 @@ class AnalysisResult:
     anomaly_enabled: bool = False
     i0_used: bool = False
     i0_source: str = ""
+    config: PipelineConfig | None = None   # normalized config used for this run
 
 
 def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> AnalysisResult:
@@ -160,15 +161,10 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
             df_excluded = pd.concat([df_excluded, rejected_df], ignore_index=True)
 
     descs = None
-    if with_descriptions and "describe" in mods:
-        from .describe import describe_rows
-
-        descs = describe_rows(df, rec, cfg)
-
     detector_id = resolve_detector_id(cfg)
     anomaly_enabled = "anomaly" in mods
     i0_used = bool(detector_id == "burst" and i0_for_detect is not None)
-    return AnalysisResult(
+    result = AnalysisResult(
         rec, lv, filtered, det, i0_profile, anom, df, df_excluded, descs,
         detector_id=detector_id,
         detector_rejected=len(det.rejected),
@@ -176,7 +172,16 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
         anomaly_enabled=anomaly_enabled,
         i0_used=i0_used,
         i0_source="detector:burst" if i0_used else "",
+        config=cfg,
     )
+    if with_descriptions and "describe" in mods:
+        # The describer consumes the AnalysisResult: the trace the detector
+        # actually saw, the dynamic I0 window and the voltage trace — never a
+        # second read of the ABF.
+        from .fingerprint import describe_result
+
+        result.descs = describe_result(result)
+    return result
 
 
 def _artifact_config(cfg: PipelineConfig):

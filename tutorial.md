@@ -552,6 +552,8 @@ MOLTRACE/
 
 - 计算逐事件进行，长事件约 0.3～0.5 秒/个。界面按需计算，选中才计算；批量处理会计算全部保留事件。
 - 段数由 BIC 自动决定，可能过分割。糖数据上曾出现 DP+BIC 切 30 段、人工标 18 个指纹的情况。
+- 每个事件带稳定事件键 `event_key`：由文件内容、采样率、起止采样决定，与界面序号无关。重跑、调整剔除阈值后，同一物理事件的键不变。
+- 描述使用检测时的分析波形。开启低通时即滤波后的波形，同时保留原始波形供对照。
 - 当前只做分段，不做指纹分类或识别。
 
 ## 11. 统计图
@@ -655,6 +657,12 @@ MOLTRACE/
 
 `segments` 列：`event_id`、`seg_idx`、`start_ms`、`end_ms`、`width_ms`、`level_pA`、`level_rel_pA`、`level_norm`、`amp_pA`、`snr`、`tau_ms`。`event_id` 与事件表中的行号一致。
 
+旧列顺序不变，随后追加溯源列：`event_key`、`source_id`、`start_sample`、`end_sample`、`start_global`、`end_global`、`fs_hz`、`trace_source`、`describer_version`、`params_hash`、`attrs_json`。`start_sample`/`end_sample` 相对事件起点，`start_global`/`end_global` 为记录内绝对采样。
+
+`events` 工作表同样保留旧列，追加 `event_key`、`source_id`、`legacy_event_id`、`event_start_sample`、`event_end_sample`、`fs_hz`、`describer_version`、`params_hash`、`trace_source`、`schema_version`、`coverage_frac`、`attrs_json`。
+
+JSON 的 `schema_version` 为 `1.1`。旧键全部保留，新增 `source_id`、`fs_hz`、`params_hash`、`trace_source` 与 `manifest`（本次运行的检测器、描述器、参数摘要），每个事件新增 `event_key`、全局起止采样与覆盖度。
+
 ### 13.4 events.mat
 
 勾选“事件波形导出”后生成 `<文件名>_events.mat`。每个事件保存：
@@ -665,6 +673,7 @@ MOLTRACE/
 - `t1_s`、`t2_s`：开始和结束时间，单位秒。
 - `fs_hz`：采样率。
 - `event_id`：事件编号。
+- `event_key`：与指纹表一致的事件键；`source_id` 在文件顶层，用于跨导出回溯。
 
 MATLAB 读取示例：
 

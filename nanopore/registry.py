@@ -26,6 +26,7 @@ class DetectorSpec:
     params: tuple[str, ...] = ()    # PipelineConfig fields owned by this detector
     uses_voltage: bool = False
     uses_i0: bool = False
+    version: str = "1"              # detector implementation version (provenance)
 
 
 DETECTOR_ORDER: tuple[str, ...] = ("level", "burst", "plateau")

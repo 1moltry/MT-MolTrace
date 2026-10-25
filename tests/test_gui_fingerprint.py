@@ -98,17 +98,24 @@ def test_slice_draws_segments(qapp):
 def test_describe_worker_returns_description(qapp):
     from PyQt5.QtTest import QSignalSpy
 
+    from nanopore.analyze import AnalysisResult
     from nanopore.config import PipelineConfig
     from nanopore.gui.controller import DescribeWorker
 
     rec, row, _desc = _event_and_desc()
-    worker = DescribeWorker(rec, row, 3, PipelineConfig(enabled_mods=("describe",)))
+    cfg = PipelineConfig(enabled_mods=("describe",))
+    analysis = AnalysisResult(
+        rec, None, rec.current, None, None, None,
+        pd.DataFrame([row]), None,
+        detector_id="level", enabled_mods=("describe",), config=cfg)
+    worker = DescribeWorker(analysis, 0, cfg)
     spy = QSignalSpy(worker.done)
     worker.start()
     assert worker.wait(60_000)
     assert len(spy) == 1
-    event_id, desc = spy[0]
-    assert event_id == 3
+    key, desc = spy[0]
+    assert isinstance(key, tuple) and key[0] == desc.event_key
+    assert desc.event_id == 1
     assert len(desc.segments) == 3
 
 

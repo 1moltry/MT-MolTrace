@@ -1,7 +1,7 @@
 # PLAN — 统一指纹平台后续阶段
 
-> 状态：阶段 1-2 已完成，阶段 3 起待实施。
-> 基线提交：`e0f28da`（分支 `feat/unified-fingerprint-core`）。
+> 状态：阶段 1-3 已完成，阶段 4 起待实施。
+> 基线提交：`e4ab2a9`（分支 `feat/unified-fingerprint-core`；阶段 3 的改动在其上，尚未提交）。
 > 本文供新的干净上下文直接接手；开工前先读 `CLAUDE.md`、本文件和 `DEVLOG.md` 的 [2026-10-25] 条目。
 
 ## 1. 已确定的目标与边界
@@ -35,6 +35,8 @@
 2. 指纹事件编号是保留表行号，跨重跑不稳定；导出缺全局坐标和溯源信息。
 3. DP+BIC 对向上、双向事件的方向处理不正确；BIC 有已知过分割问题。
 4. 标注、评测和跨事件形状发现仍在主程序之外，尚未形成闭环。
+
+**阶段 3 已完成（2026-10-25，待提交）**：新增 `nanopore/fingerprint/` 包（contracts / context / registry / engine / builtin），描述层改吃 `AnalysisResult`，使用检测时的分析波形、动态 I0 与电压窗口；事件身份改为 `source_id` + `event_key`；缓存键改为 `(event_key, describer, version, params_hash, data_hash)`；指纹 Excel/JSON 与事件波形 `.mat` 补充事件键、全局采样和溯源字段。旧 `event_id` 保留为 `legacy_event_id`，旧列与旧 JSON 键不变。缺口 1、2 关闭；缺口 3、4 仍属阶段 4、6。
 
 ## 3. 目标数据流
 
@@ -261,10 +263,10 @@ class CorpusShapeMethod(FingerprintDescriber, Protocol):
 
 | 层级 | 内容 | 规模 | 耗时 |
 |------|------|------|------|
-| 日常快检 | 非 GUI、非本地数据集成 | 174 项 | 约 7 秒 |
-| GUI | Qt 离屏界面 | 45 项 | 单独运行 |
-| 集成 | 依赖本地 `.abf` 的端到端路径 | 10 项 | 约 35 秒 |
-| 完整门禁 | 全部测试 | 229 项 | 约 50～80 秒 |
+| 日常快检 | 非 GUI、非本地数据集成 | 194 项 | 约 15 秒 |
+| GUI | Qt 离屏界面 | 45 项 | 约 3 秒 |
+| 集成 | 依赖本地 `.abf` 的端到端路径 | 10 项 | 约 70 秒 |
+| 完整门禁 | 全部测试 | 249 项 | 约 80 秒 |
 
 命令：
 
