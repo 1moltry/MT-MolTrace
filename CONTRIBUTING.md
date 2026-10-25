@@ -63,9 +63,27 @@ TRP 尾部基线抬升伴随 IQR 增大才被判出，但个别记录只有位�
 
 ## 提交前
 
+按改动范围分层运行，不必每次改动都跑完整套件：
+
 ```bash
-python -m pytest tests/ -q      # 必须全绿
+# 日常快检：非 GUI、非本地样例集成，当前约 7 秒
+python -m pytest tests/ -q -m "not gui and not integration"
+
+# 改到界面时
+python -m pytest tests/ -q -m gui
+
+# 改到真实样例、批处理或导出链路时
+python -m pytest tests/ -q -m integration
+
+# 提交/合并门禁：全部测试，当前约 50～80 秒
+python -m pytest tests/ -q
 ```
+
+- 小改动先跑相关测试文件，再跑日常快检。
+- 提交前跑完整门禁。纯文档提交可只跑快检，并在提交信息中说明。
+- 发布前跑完整门禁、真实样例批处理和 GUI 冒烟。
+- 不通过删除回归测试来缩短时间。优先使用 marker、fixture 和 session 级 QApplication。
+- 新增 GUI 测试放在 `tests/test_gui_*.py`，会自动获得 `gui` 标记；依赖本地 `.abf` 且较慢的测试加 `@pytest.mark.integration`。
 
 算法改动**必须**配套 `tests/` 回归。本项目的做法是用合成信号构造已知真值（`tests/synth.py`），而不是只看实样跑出来像不像——实样没有真值，肉眼判断无法回归。
 

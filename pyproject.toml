@@ -30,3 +30,7 @@ packages = ["nanopore", "nanopore.gui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "gui: Qt offscreen GUI tests",
+    "integration: requires local .abf sample data and runs slower end-to-end paths",
+]

@@ -114,6 +114,7 @@ def test_metadata_roundtrip(tmp_path):
 _SAMPLE = Path("abf数据案例/abf数据案例/Ala.abf")
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not _SAMPLE.exists(), reason="local sample data not present")
 def test_pipeline_exports_raw_even_with_lowpass(tmp_path):
     """lowpass changes the detected boundaries, but the exported samples must be
@@ -135,6 +136,7 @@ def test_pipeline_exports_raw_even_with_lowpass(tmp_path):
         assert np.array_equal(ev["current_pA"].ravel(), raw[s:s + n])
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not _SAMPLE.exists(), reason="local sample data not present")
 def test_pipeline_omits_mat_without_mod(tmp_path):
     from nanopore.pipeline import process_file

@@ -256,10 +256,15 @@ tests/             合成信号回归测试
 ## 测试
 
 ```bash
-python -m pytest tests/ -q
+python -m pytest tests/ -q                                  # 完整门禁
+python -m pytest tests/ -q -m "not gui and not integration" # 日常快检
+python -m pytest tests/ -q -m gui                           # 界面
+python -m pytest tests/ -q -m integration                   # 本地样例端到端
 ```
 
-算法变更须配套 tests/ 回归（合成信号解析真值），交付前全绿。CI 在 ubuntu 与 windows 上跑同一套测试。
+`tests/test_gui_*.py` 由 `tests/conftest.py` 自动加 `gui` 标记；依赖本地 `.abf` 的慢测试使用 `integration` 标记。编辑中先跑相关文件与快检，提交前跑完整套件，发布前再加真实样例和发行包自测。测试策略与后续阶段计划见 [`PLAN_fingerprint_platform.md`](PLAN_fingerprint_platform.md)。
+
+算法变更须配套 tests/ 回归（合成信号解析真值），交付前全绿。CI 在 ubuntu 与 windows 上跑同一套完整测试。
 
 ## 发行打包
 

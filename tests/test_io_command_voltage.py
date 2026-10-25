@@ -11,6 +11,7 @@ import pytest
 
 TPAL = Path("abf数据案例/abf数据案例2/abf数据案例2/tPAL")
 CASE = Path("abf数据案例/abf数据案例")
+pytestmark = pytest.mark.integration
 
 
 def _have_tpal() -> bool:

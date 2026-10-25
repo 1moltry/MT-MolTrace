@@ -116,7 +116,9 @@
 
 **测试**：`pytest` **229 passed**。新增注册表/CLI/配置 65 字段往返、未暴露字段保留、异常开关不改变检测、burst+anomaly 边界一致、平台剔除可追溯、GUI 异常空态与剔除选中隔离等测试。真实样例 Ala：37 保留 / 44 候选，`anomaly_enabled=False`，`valid_pct` 为空，excluded 含 `drop_stage`/`drop_code`。
 
-**下一步**：阶段 3——统一事件身份与描述层分析上下文（filtered / dynamic I0 / voltage / 全局坐标），再进入 DP+BIC 方向与过分割优化。
+**测试分层**：GUI 测试由 `tests/conftest.py` 自动加 `gui` 标记，本地样例端到端测试加 `integration` 标记。日常快检 174 项约 7 秒；GUI 45 项；集成 10 项约 35 秒；完整门禁 229 项约 50～80 秒。规则见 `CONTRIBUTING.md`，后续阶段计划见 `PLAN_fingerprint_platform.md`。
+
+**下一步**：阶段 3——统一事件身份与描述层分析上下文（filtered / dynamic I0 / voltage / 全局坐标），再进入 DP+BIC 方向与过分割优化。后续阶段、接口和验收见 `PLAN_fingerprint_platform.md`。
 
 ---
 

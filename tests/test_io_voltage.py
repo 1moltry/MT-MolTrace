@@ -9,8 +9,11 @@ spontaneous blockage recovery.
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 CASE = Path("abf数据案例/abf数据案例")
+
+pytestmark = pytest.mark.integration
 
 
 def _have_cases() -> bool:

@@ -134,6 +134,7 @@ def test_analyze_refined_pulls_prerequisites():
 _SAMPLE = Path("abf数据案例/abf数据案例/Ala.abf")
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not _SAMPLE.exists(), reason="local sample data not present")
 def test_run_batch_minimal_writes_only_events_table(tmp_path):
     from nanopore.pipeline import run_batch
@@ -147,6 +148,7 @@ def test_run_batch_minimal_writes_only_events_table(tmp_path):
     assert not any(n.endswith("_overview.png") for n in names)
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not _SAMPLE.exists(), reason="local sample data not present")
 def test_run_batch_all_writes_every_output(tmp_path):
     from nanopore.pipeline import run_batch
