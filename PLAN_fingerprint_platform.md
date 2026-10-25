@@ -1,7 +1,7 @@
 # PLAN — 统一指纹平台后续阶段
 
-> 状态：阶段 1-3 已完成，阶段 4 起待实施。
-> 基线提交：`e4ab2a9`（分支 `feat/unified-fingerprint-core`；阶段 3 的改动在其上，尚未提交）。
+> 状态：阶段 1-5、7 已完成；阶段 6（标注与评测闭环）与阶段 8（发行）待实施。
+> 阶段 4-5 与阶段 7 于 2026-10-25 完成（分支 `chore/repo-slimming`）。
 > 本文供新的干净上下文直接接手；开工前先读 `CLAUDE.md`、本文件和 `DEVLOG.md` 的 [2026-10-25] 条目。
 
 ## 1. 已确定的目标与边界
@@ -29,14 +29,19 @@
 - 平台法剔除进入 `df_excluded`，带 `drop_stage=detector` 和 `drop_code`，不与异常 kind 混用。
 - 全量测试 `229 passed`；真实 `Ala.abf` 批处理验收通过。
 
-当前仍有四个关键缺口：
+当前完成状态：
 
-1. 描述层只读原始波形，没有使用检测时的滤波波形、动态 I0 和电压。
-2. 指纹事件编号是保留表行号，跨重跑不稳定；导出缺全局坐标和溯源信息。
-3. DP+BIC 对向上、双向事件的方向处理不正确；BIC 有已知过分割问题。
-4. 标注、评测和跨事件形状发现仍在主程序之外，尚未形成闭环。
+- 缺口 1、2：阶段 3 关闭（描述层使用分析上下文与稳定事件身份）。
+- 缺口 3：阶段 4 关闭（方向感知、整数边界、时间窗边缘、慢出孔修剪、BIC 诊断、classic 描述器、全局区间与评测适配器）。
+- 缺口 4：标注与评测闭环仍开放（阶段 6）；跨事件形状发现已接入实验层（阶段 7），但未验证、默认关闭。
 
-**阶段 3 已完成（2026-10-25，待提交）**：新增 `nanopore/fingerprint/` 包（contracts / context / registry / engine / builtin），描述层改吃 `AnalysisResult`，使用检测时的分析波形、动态 I0 与电压窗口；事件身份改为 `source_id` + `event_key`；缓存键改为 `(event_key, describer, version, params_hash, data_hash)`；指纹 Excel/JSON 与事件波形 `.mat` 补充事件键、全局采样和溯源字段。旧 `event_id` 保留为 `legacy_event_id`，旧列与旧 JSON 键不变。缺口 1、2 关闭；缺口 3、4 仍属阶段 4、6。
+**阶段 3 已完成（2026-10-25，待提交）**：新增 `nanopore/fingerprint/` 包（contracts / context / registry / engine / builtin），描述层改吃 `AnalysisResult`，使用检测时的分析波形、动态 I0 与电压窗口；事件身份改为 `source_id` + `event_key`；缓存键改为 `(event_key, describer, version, params_hash, data_hash)`；指纹 Excel/JSON 与事件波形 `.mat` 补充事件键、全局采样和溯源字段。旧 `event_id` 保留为 `legacy_event_id`，旧列与旧 JSON 键不变。缺口 1、2 关闭。
+
+**阶段 4 已完成（2026-10-25）**：`edge_bounds` 方向感知（向下 p15 / 向上 p85 / 双向带状回孔），边缘窗改为毫秒；`Step` 记录整数起止，降采样余数并入最后一段；慢出孔尾部过渡段修剪；BIC 增加 `bic_penalty` 与 `bic_n_eff` 诊断；新增 `classic` 双阈值描述器（beta）；`dp_bic` 因实测过分割改标 beta；新增 `fingerprint/intervals.py` 的全局区间与区间 F1 适配器。现有 `GalNAc-1` 标注上 `classic` 复现 F1@0.5 ms ≈ 0.536，`dp_bic` 仍过分割（195 vs 97，F1 ≈ 0.151），BIC 自动有效样本数不是解药（33 段，F1 ≈ 0.062），故默认保持源行为、诊断参数 opt-in。
+
+**阶段 5 已完成（2026-10-25）**：描述器下拉与参数表单由注册表生成；分段表支持并排比较；描述缓存与代次竞态修复；工具栏“导出指纹”；批量对话框显示检测器/描述器/异常状态并支持描述阶段取消；对比窗口复用纯比较函数并增加描述器指标；CLI 新增 `--describers`，保留 `--describe` / `--fp-param` 旧语义。
+
+**阶段 7 已完成（2026-10-25，先上线后调试）**：新增 `nanopore/fingerprint/research/`（PELT / DTW / 离散 Fréchet / DBA / 形状词表 / null / 语料 / 模型 / 工作流）；`shape_vocab` 与 `pelt` 注册为 `experimental`，默认关闭；`ShapeModel` 支持 JSON 保存/加载与解码叠加；GUI 首页新增“指纹研究”工作区；CLI 新增 `research fit / decode / nulls`；`research` extra 与发行 hidden imports 已接。旧词表 AUC 0.674 / 0.715 < 0.85 的事实保留在界面与导出中。真实 GalNAc-1 冒烟通过，但准确率与参数标定尚未完成。
 
 ## 3. 目标数据流
 
@@ -152,7 +157,7 @@ class CorpusShapeMethod(FingerprintDescriber, Protocol):
 - 旧 JSON 键仍可读，旧测试不降级。
 - 快检与相关 GUI 测试通过，阶段门禁跑全量。
 
-## 6. 阶段 4：分段算法正确性与评测
+## 6. 阶段 4：分段算法正确性与评测（已完成 2026-10-25）
 
 ### 任务
 
@@ -186,7 +191,7 @@ class CorpusShapeMethod(FingerprintDescriber, Protocol):
   - 漏切与误切。
 - 无新增标注时不得宣称参数最优。
 
-## 7. 阶段 5：前后端联动
+## 7. 阶段 5：前后端联动（已完成 2026-10-25）
 
 ### 任务
 
@@ -222,7 +227,7 @@ class CorpusShapeMethod(FingerprintDescriber, Protocol):
 - GUI 与 CLI 对同一预测得到相同 F1 和边界位移。
 - 无需命令行即可完成“导入标注 → 评测 → 查看报告”。
 
-## 9. 阶段 7：实验性形状发现
+## 9. 阶段 7：实验性形状发现（已完成 2026-10-25）
 
 ### 任务
 
@@ -263,10 +268,10 @@ class CorpusShapeMethod(FingerprintDescriber, Protocol):
 
 | 层级 | 内容 | 规模 | 耗时 |
 |------|------|------|------|
-| 日常快检 | 非 GUI、非本地数据集成 | 194 项 | 约 15 秒 |
-| GUI | Qt 离屏界面 | 45 项 | 约 3 秒 |
-| 集成 | 依赖本地 `.abf` 的端到端路径 | 10 项 | 约 70 秒 |
-| 完整门禁 | 全部测试 | 249 项 | 约 80 秒 |
+| 日常快检 | 非 GUI、非本地数据集成 | 231 项 | 约 35 秒 |
+| GUI | Qt 离屏界面 | 58 项 | 约 12 秒 |
+| 集成 | 依赖本地 `.abf` / 标注的端到端路径 | 14 项 | 约 57 秒 |
+| 完整门禁 | 全部测试 | 303 项 | 约 98 秒 |
 
 命令：
 
@@ -300,6 +305,6 @@ python -m pytest tests/ -q
 1. `git status --short --branch`，确认分支和未提交改动。
 2. 阅读 `CLAUDE.md`、本文件、`DEVLOG.md` 的 [2026-10-25] 条目。
 3. 运行 `python -m pytest tests/ -q -m "not gui and not integration"`，确认快检基线。
-4. 只实施阶段 3，不提前改阶段 4 的算法。
+4. 阶段 4-5、7 已完成；下一轮从阶段 6 开始；阶段 7 只做上线后的参数标定，不再新增未验证算法。
 5. 每个阶段结束追加 DEVLOG，写明变更、测试、下一步和兼容性影响。
 6. 提交前运行完整测试；没有明确要求时不推送远端、不构建发行包。

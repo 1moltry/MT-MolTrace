@@ -13,10 +13,11 @@
 需要 Python ≥ 3.11（开发环境 3.13）。
 
 ```bash
-pip install -e ".[dev]"      # 可编辑安装，含 GUI 依赖与 pytest
+pip install -e ".[dev]"            # 可编辑安装，含 GUI、pytest 与实验性研究依赖
+pip install -e ".[gui,research]"   # 只运行应用时需要 GUI + 形状研究
 ```
 
-依赖由 `pyproject.toml` 声明：运行核心为 numpy / scipy / pandas / matplotlib / openpyxl / pyabf；GUI 另需 PyQt5 / pyqtgraph（`[gui]` 或 `[dev]` extra）。
+依赖由 `pyproject.toml` 声明：运行核心为 numpy / scipy / pandas / matplotlib / openpyxl / pyabf；GUI 另需 PyQt5 / pyqtgraph（`[gui]` 或 `[dev]` extra）；实验性形状研究另需 ruptures / scikit-learn（`[research]` extra，`[dev]` 也包含）。
 
 安装后可用 `moltrace` 命令；下文的 `python -m nanopore` 是等价的旧别名。
 
@@ -53,6 +54,11 @@ python -m nanopore run <目录> --mods anomaly,plots
 # 驻留包络去抖（毛刺 / 多电平）；跨基线多电平再开 --burst-cross-base
 python -m nanopore run <目录> --event-mode burst
 python -m nanopore run <目录> --event-mode burst --burst-cross-baseline
+
+# 事件指纹描述（自动启用 describe 模块）
+python -m nanopore run <目录> --describe dp_bic
+python -m nanopore run <目录> --describers dp_bic,classic
+python -m nanopore run <目录> --describe classic --fp-param thresh_sigma=8
 ```
 
 批处理递归搜索 ABF，单个文件失败不会中断其他文件。
@@ -144,6 +150,108 @@ end
 异常识别是**检测后的可选后处理**：关闭时结果对象与界面都明确标记“未筛查”，不会用 `有效 100%` 冒充已检查；开启时也只剔除已检出事件，不改变 level / burst / plateau 的事件边界。检测器自身的候选有效性规则单独记为 `drop_stage=detector`，与异常原因分属不同命名空间。GUI 顶部的“异常识别：开/关”标签显示本次实际状态。
 
 检测器目录集中在 `nanopore/registry.py`，GUI、CLI、批处理与对比窗口都从同一份元数据生成选项。参数面板从上次载入的完整协议增量覆盖；未在界面暴露的配置字段不再被重置。未知配置键会告警，不再静默丢弃。
+
+## 事件指纹描述器（阶段 4-5）
+
+`describe` 模块是检测后的可选描述层。描述器注册在 `nanopore/fingerprint/`，GUI、CLI、批处理与对比窗口都从注册表取 id、标签、成熟度和参数表单，不各写一份。
+
+| id | 做法 | 成熟度 | 主要参数 |
+|----|------|--------|----------|
+| `dp_bic` | DP 最优划分 + BIC 定段数，恒定电平段 | 测试（已知过分割） | `k_max`、`tau_min_us`、`amp_min_pA`、`snr_min`、`bic_penalty`、`bic_n_eff`、边缘窗 |
+| `classic` | 双阈值滞回候选（离阻孔基线的高/低阈），最小宽度 + 间隙合并 | 测试 | `thresh_sigma`、`thresh_lo_sigma`、`smooth_ms`、`min_width_ms`、`merge_gap_ms` |
+| `scalar` | 整事件统计量，不切段 | 稳定 | `outlier_sigma` |
+
+阶段 4 的关键修正：
+
+- **方向感知**：向下事件用开孔 p97 与事件体 p15；向上事件用 p3 与 p85。双向/多电平事件带 `baseline_ambiguous` 质量标记，不强行套用单一阻孔基线。
+- **整数边界**：`Step` 记录整数起止与长度；降采样余数并入最后一段，最后一层严格覆盖到 `t_out`。
+- **时间窗边缘**：平滑窗按毫秒定义（默认 0.2 ms），25 kHz 与 50 kHz 行为一致；`t_out` 按方向选择回到开孔的判据。
+- **慢出孔**：尾部若由多段单调逼近开孔的短段组成，整体判为过渡沿剔除，不再作为额外指纹；原始出口采样保留在 `edge_out_raw_samples`。
+- **BIC 诊断**：`bic_n_eff=-1` 用自相关估计有效样本数，`bic_penalty` 缩放复杂度惩罚。默认仍是源行为（`bic_n_eff=0`），因为现有标注显示自动修正会明显损失召回；参数已暴露，等标注增多后再标定。
+
+现有真值评测（`GalNAc-1`，12 事件 / 97 指纹，冻结事件表，仅评描述层）：
+
+| 描述器 | 预测区间 | 区间 F1@0.5 ms | 精确 | 召回 | 中位边界位移（起/止） |
+|--------|----------|----------------|------|------|----------------------|
+| `dp_bic`（默认） | 195 | 0.151 | 0.113 | 0.227 | 0.52 / 0.50 ms |
+| `dp_bic` + `bic_n_eff=-1` | 33 | 0.062 | 0.121 | 0.041 | 0.48 / 0.34 ms |
+| `classic` | 112 | 0.536 | 0.500 | 0.577 | 0.36 / 0.32 ms |
+
+补充标定：`snr_min` 在 0–50 时 F1 基本不变（0.151–0.154），≥100 后召回骤降；`tau_min_us=500` 使 F1 降到 0.107。`snr_min` 保持默认 0，不通过调参掩盖过分割。
+
+结论：`classic` 复现了糖项目已发表的基线；`dp_bic` 的过分割是真实问题，BIC 自动修正不是解药。两者都保留、都标为测试，由用户按数据选择。
+
+GUI 侧：
+
+- 描述器下拉与参数表单由注册表生成，切换描述器即重建参数行。
+- 分段表可勾选“并排比较”，同时显示两种描述器对同一事件的分段；只重算描述，不重跑检测。
+- 描述缓存键包含事件键、描述器、版本、参数摘要与数据摘要；切换文件或协议会使旧结果失效。
+- 工具栏“导出指纹…”复用批量 writer，单文件与批量导出字段一致。
+
+CLI 侧：
+
+- `--describe ID` 保留旧语义，启用 `describe` 并选一个描述器。
+- `--describers ID[,ID…]` 一次输出多套：第一个写历史文件名，其余写 `<名>_fingerprints_<id>.*`。
+- `--fp-param KEY=VALUE` 仍作用于当前描述器；未知参数键由 `resolve_params` 丢弃。
+
+## 实验性形状研究（阶段 7）
+
+代码在 `nanopore/fingerprint/research/`，GUI 工作区在 `nanopore/gui/research.py`。它是**实验性**功能：默认关闭，所有描述都带 `quality["experimental"]=True`，并且不进入默认生产结果。
+
+### 算法与文件
+
+| 文件 | 作用 |
+|------|------|
+| `deps.py` | `research` extra 的依赖守卫；缺 `ruptures` / `scikit-learn` 时给出可执行安装提示 |
+| `curves.py` | R1/R2 表示、DTW（长度归一）、离散 Fréchet、欧氏重采样 baseline、DBA、已知形状构造 |
+| `fragments.py` | PELT(l2) 变点、变长片段提取、层次聚类 |
+| `corpus.py` | 跨事件 `EventCorpus`；可从 `AnalysisResult` 或 `.abf` 文件构建 |
+| `model.py` | `ShapeModel`（JSON 保存/加载）、`ShapeVocabularyMethod`、`PELTDescriber`、活动模型 |
+| `nulls.py` | N1-flat / N1-telegraph / N2-phase null、AUC、复现度、留一文件 |
+| `workflows.py` | CLI 与 GUI 共用的语料构建、拟合、解码、按来源写文件 |
+| `../gui/research.py` | 语料 / 词表缩略图 / 解码叠加三个页签 |
+
+### 接口
+
+```python
+from nanopore.fingerprint.research import (
+    EventCorpus, ShapeModel, ShapeVocabularyMethod,
+    fit_vocabulary, decode_corpus, null_report, leave_one_file,
+)
+
+corpus = EventCorpus.from_files(paths, cfg, limit=200)
+model = fit_vocabulary(corpus, {"pen_mult": 8.0, "dist": "dtw"})
+model.save("shape_vocab.json")
+descs = decode_corpus(corpus, ShapeModel.load("shape_vocab.json"))
+report = null_report(corpus, model)
+```
+
+`ShapeVocabularyMethod` 实现 `CorpusShapeMethod`：`fit(corpus, params)` 产生词表，`decode(view, model, params)` 产生 `EventDescription`。`describe(view, params)` 只在有活动模型时工作；没有模型时抛 `DescriberUnavailable`，引擎会把它转成 `valid=False` 的描述而不是崩溃。`PELTDescriber` 不依赖词表，直接输出 PELT 片段。
+
+### 命令与导出
+
+```bash
+python -m nanopore research fit <路径> -o shape_vocab.json --limit 200 \
+    --pen-mult 8 --dist dtw --min-support 5 --nulls --leave-one-file
+python -m nanopore research decode <路径> --model shape_vocab.json -o output_research
+python -m nanopore research nulls <路径> --model shape_vocab.json -o nulls.json
+```
+
+解码复用 `write_fingerprints`，输出 `<名>_shape_decode_fingerprints.xlsx/.json`；同一套 `event_key`、`source_id`、全局采样和 `manifest` 字段，因此可以和普通指纹导出互相回溯。每个事件的 `payload` 带 `model_id`、`threshold`、`gate_note`，`quality` 带 `experimental=True`。
+
+### 依赖与发行
+
+- 源码：`pip install -e ".[research]"`；`dev` extra 也包含这两个依赖，测试可直接跑。
+- 缺依赖时：GUI 的「语料」页仍可用，拟合/解码禁用并显示安装命令；CLI 返回码 2 并打印同样的提示。
+- 发行包：`release/build_release.py` 已把 `research` extra 加入干净构建环境，并显式加入 `nanopore.fingerprint.research`、`ruptures`、`sklearn.cluster` 的 hidden import（这些是函数内惰性导入，PyInstaller 不会自动发现）。
+- 发行前必须实测一次带研究功能的包；阶段 8 的发行自测清单需要补这一项。
+
+### 诚实边界
+
+- 旧形状词表的对照结果：AUC 0.674（N1tele）/ 0.715（N2phase），低于计划门槛 0.85。该数字固定写在 `GATE_NOTE`、GUI 警告与导出 `payload` 中。
+- 默认生产流程不启用 `shape_vocab` / `pelt`；只有用户显式选择或调用 research 命令才会运行。
+- 加性叠加假设、0.47 ms 时间地板、跨糖不可池化等限制没有因为本次集成而消失；阶段 8 之前不要把这些实验输出写成结论。
+- 形状结果当前是「先上线、后调试」：接口、保存/加载、null 入口和叠加查看已经可用，参数标定与准确率评估仍待标注语料扩充后进行。
 
 ## 检测模式：电平法 / 驻留包络去抖（burst）
 
@@ -239,16 +347,18 @@ nanopore/          Python 包
 ├── registry.py    检测器目录、id 解析与配置规范化
 ├── anomaly.py     异常检测（可选后处理；不参与事件边界）
 ├── features.py    特征提取（列名遵循课题组既定特征表规范）
-├── steps.py       事件内台阶分割（DP + BIC）
-├── fingerprint/   事件指纹：契约、上下文、描述器注册与执行
+├── steps.py       事件内台阶分割（DP + BIC；方向感知、整数边界、慢出孔修剪）
+├── fingerprint/   事件指纹：契约、上下文、描述器注册、执行与区间评测
+│   └── research/  实验性形状研究：PELT / DTW / Fréchet / DBA / 词表 / null
+├── compare.py     纯比较函数（检测器边界指标、描述器指标）
 ├── describe.py    旧描述层导入路径的兼容门面
 ├── roi.py         Cursor 局部分析（子区间独立电平重析）
 ├── analysis.py    输出：事件表 / 图 / 合并表 / 事件波形 .mat
 ├── analyze.py     共享分析编排（底座 + 模块；pipeline 与 GUI 共用）
 ├── mods.py        功能模块注册表（ModSpec / MODS / resolve_mods）
-├── cli.py         命令行入口（run / gui）
+├── cli.py         命令行入口（run / gui / research）
 ├── config.py      参数管理
-└── gui/           交互式桌面 GUI（PyQt5 + pyqtgraph）
+└── gui/           交互式桌面 GUI（PyQt5 + pyqtgraph；含指纹研究工作区）
 release/
 └── build_release.py  Windows 发行包构建脚本
 tests/             合成信号回归测试

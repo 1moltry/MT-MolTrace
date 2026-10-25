@@ -109,9 +109,27 @@ def normalize_config(cfg: Any, *, warn_unknown: bool = True) -> Any:
 
     detector = resolve_detector_id(cfg, warn_unknown=warn_unknown)
     legacy_mode = "burst" if detector == "burst" else "level"
+
+    # Describe ids are validated here as well, so a hand-edited config or an
+    # old protocol cannot fail deep inside the description engine.
+    from .fingerprint import describer_ids
+
+    known_desc = set(describer_ids())
+    describer = str(getattr(cfg, "describer", "") or "dp_bic")
+    if describer not in known_desc:
+        if warn_unknown:
+            warnings.warn(
+                f"unknown describer {describer!r}; falling back to dp_bic",
+                UserWarning, stacklevel=2)
+        describer = "dp_bic"
+    extras = tuple(d for d in (getattr(cfg, "describers", ()) or ())
+                   if d in known_desc and d != describer)
+
     return replace(
         cfg,
         detector=detector,
         event_mode=legacy_mode,
         enabled_mods=resolve_mods(tuple(getattr(cfg, "enabled_mods", ()) or ())),
+        describer=describer,
+        describers=extras,
     )

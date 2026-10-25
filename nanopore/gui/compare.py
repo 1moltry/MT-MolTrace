@@ -24,8 +24,11 @@ from PyQt5.QtWidgets import (QCheckBox, QDialog, QFileDialog, QHBoxLayout,
                              QVBoxLayout)
 
 from ..analyze import analyze
+from ..compare import boundary_metrics, describer_metrics
 from ..config import PipelineConfig
+from ..fingerprint import describe_meta, describe_result
 from ..io import read_abf
+from ..mods import resolve_mods
 from ..registry import list_detectors, normalize_config
 
 ALGOS = tuple((spec.id, spec.label) for spec in list_detectors())
@@ -35,54 +38,6 @@ _COLORS = {
     "plateau": (44, 160, 44),
 }
 _LABELS = dict(ALGOS)
-
-
-def match_intervals(a: list[tuple[float, float]],
-                    b: list[tuple[float, float]],
-                    min_overlap: float = 0.5):
-    """One-to-one overlap match; returns (pairs, unmatched_a, unmatched_b)."""
-    a = sorted(a)
-    b = sorted(b)
-    pairs: list[tuple[int, int]] = []
-    used: set[int] = set()
-    j = 0
-    for i, (as_, ae) in enumerate(a):
-        while j < len(b) and b[j][1] <= as_:
-            j += 1
-        best = None
-        k = j
-        while k < len(b) and b[k][0] < ae:
-            bs, be = b[k]
-            ov = min(ae, be) - max(as_, bs)
-            if ov > 0:
-                score = min(ov / max(ae - as_, 1e-12), ov / max(be - bs, 1e-12))
-                if best is None or score > best[0]:
-                    best = (score, k)
-            k += 1
-        if best is not None and best[0] >= min_overlap and best[1] not in used:
-            pairs.append((i, best[1]))
-            used.add(best[1])
-    return pairs, len(a) - len(pairs), len(b) - len(used)
-
-
-def boundary_metrics(base: list[tuple[float, float]],
-                     other: list[tuple[float, float]]) -> dict:
-    """Agreement of ``other`` against ``base`` (both are kept-event spans)."""
-    pairs, ua, ub = match_intervals(base, other)
-    if not pairs:
-        return {"matched": 0, "only_base": ua, "only_other": ub,
-                "d_start_ms": float("nan"), "d_end_ms": float("nan"),
-                "d_boundary_ms": float("nan")}
-    ds = np.array([(other[j][0] - base[i][0]) * 1e3 for i, j in pairs])
-    de = np.array([(other[j][1] - base[i][1]) * 1e3 for i, j in pairs])
-    return {
-        "matched": len(pairs),
-        "only_base": ua,
-        "only_other": ub,
-        "d_start_ms": float(np.median(np.abs(ds))),
-        "d_end_ms": float(np.median(np.abs(de))),
-        "d_boundary_ms": float(np.median(np.concatenate((np.abs(ds), np.abs(de))))),
-    }
 
 
 def _downsample(x: np.ndarray, fs: float, max_points: int = 6000):
@@ -208,6 +163,8 @@ class CompareDialog(QDialog):
         self.status.setStyleSheet("color:#57606a;")
         btn_export = QPushButton("导出对比表…")
         btn_export.clicked.connect(self._export)
+        btn_desc = QPushButton("描述器指标…")
+        btn_desc.clicked.connect(self._describer_metrics)
         self.btn_use = QPushButton("用选中算法查看")
         self.btn_use.clicked.connect(self._use_selected)
         self.btn_use.setEnabled(False)
@@ -216,6 +173,7 @@ class CompareDialog(QDialog):
         actions = QHBoxLayout()
         actions.addWidget(self.status, 1)
         actions.addWidget(btn_export)
+        actions.addWidget(btn_desc)
         actions.addWidget(self.btn_use)
         actions.addWidget(btn_close)
 
@@ -385,6 +343,154 @@ class CompareDialog(QDialog):
                             matched, only,
                             f"{diff:.3f}" if isinstance(diff, float) else ""])
         self.status.setText(f"对比表已导出：{path}")
+
+    def _describer_metrics(self) -> None:
+        path = self.file_edit.text().strip()
+        if not Path(path).is_file():
+            QMessageBox.warning(self, "描述器指标", "请先选择一个存在的 .abf 文件。")
+            return
+        dlg = DescriberMetricsDialog(path, self._cfg, self)
+        dlg.exec_()
+
+    def closeEvent(self, event) -> None:      # noqa: N802 — Qt signature
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.wait(2000)
+        super().closeEvent(event)
+
+
+class DescriberMetricsWorker(QThread):
+    """Describe one file with several describers and summarise the output."""
+
+    done = pyqtSignal(object)                 # list[DescriberMetrics]
+    failed = pyqtSignal(str)
+
+    def __init__(self, path: str, cfg: PipelineConfig, ids: list[str]):
+        super().__init__()
+        self.path = path
+        self.cfg = cfg
+        self.ids = ids
+
+    def run(self) -> None:
+        try:
+            rec = read_abf(self.path)
+            cfg = normalize_config(replace(
+                self.cfg,
+                enabled_mods=resolve_mods(tuple(self.cfg.enabled_mods) + ("describe",)),
+            ))
+            res = analyze(rec, cfg, with_descriptions=False)
+            outputs: dict[str, list] = {}
+            elapsed: dict[str, float] = {}
+            for did in self.ids:
+                t0 = time.perf_counter()
+                outputs[did] = describe_result(
+                    res, cfg, describer_id=did,
+                    params=dict(cfg.describe_params or {}))
+                elapsed[did] = time.perf_counter() - t0
+            self.done.emit(describer_metrics(outputs, elapsed))
+        except Exception as exc:              # noqa: BLE001 — keep the dialog alive
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class DescriberMetricsDialog(QDialog):
+    """Side-by-side describer output metrics for one file."""
+
+    HEADERS = ["描述器", "事件", "有效", "中位段数", "总段数",
+               "中位覆盖", "用时 (s)"]
+
+    def __init__(self, path: str, cfg: PipelineConfig, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("描述器指标")
+        self.resize(760, 420)
+        self._path = path
+        self._cfg = cfg
+        self._worker: DescriberMetricsWorker | None = None
+        self._rows: list[dict] = []
+
+        self.checks: dict[str, QCheckBox] = {}
+        row = QHBoxLayout()
+        row.addWidget(QLabel(Path(path).name))
+        for info in describe_meta():
+            cb = QCheckBox(info["label"])
+            cb.setChecked(info["id"] in ("dp_bic", "classic"))
+            self.checks[info["id"]] = cb
+            row.addWidget(cb)
+        row.addStretch(1)
+
+        self.table = QTableWidget(0, len(self.HEADERS))
+        self.table.setHorizontalHeaderLabels(self.HEADERS)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        self.status = QLabel("选择描述器后开始。")
+        self.status.setStyleSheet("color:#57606a;")
+        self.btn_run = QPushButton("开始")
+        self.btn_run.clicked.connect(self._run)
+        btn_export = QPushButton("导出 CSV…")
+        btn_export.clicked.connect(self._export)
+        btn_close = QPushButton("关闭")
+        btn_close.clicked.connect(self.reject)
+        actions = QHBoxLayout()
+        actions.addWidget(self.status, 1)
+        actions.addWidget(btn_export)
+        actions.addWidget(self.btn_run)
+        actions.addWidget(btn_close)
+
+        lay = QVBoxLayout(self)
+        lay.addLayout(row)
+        lay.addWidget(self.table, 1)
+        lay.addLayout(actions)
+
+    def _selected(self) -> list[str]:
+        return [did for did, cb in self.checks.items() if cb.isChecked()]
+
+    def _run(self) -> None:
+        ids = self._selected()
+        if not ids:
+            self.status.setText("至少选择一个描述器。")
+            return
+        self.btn_run.setEnabled(False)
+        self.status.setText("正在计算 …")
+        self._worker = DescriberMetricsWorker(self._path, self._cfg, ids)
+        self._worker.done.connect(self._on_done)
+        self._worker.failed.connect(self._on_failed)
+        self._worker.start()
+
+    def _on_done(self, metrics) -> None:
+        self._rows = [m.as_row() for m in metrics]
+        self.table.setRowCount(len(self._rows))
+        for r, row in enumerate(self._rows):
+            values = [
+                row["describer"], str(row["n_events"]), str(row["n_valid"]),
+                f"{row['median_segments']:.2f}"
+                if np.isfinite(row["median_segments"]) else "—",
+                str(row["total_segments"]),
+                f"{row['median_coverage']:.3f}"
+                if np.isfinite(row["median_coverage"]) else "—",
+                f"{row['elapsed_s']:.2f}"
+                if np.isfinite(row["elapsed_s"]) else "—",
+            ]
+            for c, text in enumerate(values):
+                self.table.setItem(r, c, QTableWidgetItem(text))
+        self.btn_run.setEnabled(True)
+        self.status.setText(f"完成：{len(self._rows)} 个描述器。")
+
+    def _on_failed(self, message: str) -> None:
+        self.btn_run.setEnabled(True)
+        self.status.setText("失败：" + message)
+
+    def _export(self) -> None:
+        if not self._rows:
+            QMessageBox.information(self, "描述器指标", "还没有结果。")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出描述器指标", "describer_metrics.csv", "CSV (*.csv)")
+        if not path:
+            return
+        with open(path, "w", newline="", encoding="utf-8-sig") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(self._rows[0]))
+            writer.writeheader()
+            writer.writerows(self._rows)
+        self.status.setText(f"已导出：{path}")
 
     def closeEvent(self, event) -> None:      # noqa: N802 — Qt signature
         if self._worker is not None and self._worker.isRunning():

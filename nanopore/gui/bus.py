@@ -17,7 +17,7 @@ class Bus(QObject):
     detection_finished = pyqtSignal()         # all views should refresh their data
     roi_rerun = pyqtSignal(float, float)      # request ROI analysis on [start_s, end_s]
     roi_finished = pyqtSignal(object, tuple)  # roi df + (start_s, end_s) span
-    description_ready = pyqtSignal(int, object)  # 1-based event id + EventDescription
+    description_ready = pyqtSignal(int, object, str)  # 1-based event id, description, describer id
     status = pyqtSignal(str)                  # status-bar text
 
 

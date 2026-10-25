@@ -13,6 +13,10 @@ MATURITY_LEVELS: tuple[str, ...] = ("stable", "beta", "experimental")
 TRACE_SOURCES: tuple[str, ...] = ("analysis", "raw")
 
 
+class DescriberUnavailable(RuntimeError):
+    """A describer cannot run yet (missing model, missing optional extra)."""
+
+
 class EventDescriber:
     """Base class: set metadata and implement :meth:`describe`.
 
@@ -28,6 +32,8 @@ class EventDescriber:
     maturity: str = "stable"
     input_trace: str = "analysis"
     params: tuple[ParamSpec, ...] = ()
+    requires_model: bool = False
+    data_prerequisites: tuple[str, ...] = ()
 
     def default_params(self) -> dict[str, Any]:
         return {p.name: p.default for p in self.params}
@@ -51,6 +57,8 @@ class EventDescriber:
             "version": self.version,
             "maturity": self.maturity,
             "input_trace": self.input_trace,
+            "requires_model": bool(getattr(self, "requires_model", False)),
+            "data_prerequisites": list(getattr(self, "data_prerequisites", ())),
             "params": [
                 {"name": p.name, "default": p.default, "kind": p.kind,
                  "label": p.label, "desc": p.desc,
@@ -59,6 +67,24 @@ class EventDescriber:
                 for p in self.params
             ],
         }
+
+
+class CorpusShapeMethod(EventDescriber):
+    """A describer that must be fitted on a cross-event corpus first.
+
+    ``fit`` produces a model (e.g. a shape vocabulary); ``decode`` applies it
+    to one :class:`~nanopore.fingerprint.EventView`. ``describe`` is only a
+    fallback for the active model, so a registry entry cannot silently invent
+    a vocabulary.
+    """
+
+    requires_model = True
+
+    def fit(self, corpus, params: Mapping[str, Any] | None = None):
+        raise NotImplementedError
+
+    def decode(self, view, model, params: Mapping[str, Any] | None = None):
+        raise NotImplementedError
 
 
 _DESCRIBERS: dict[str, EventDescriber] = {}

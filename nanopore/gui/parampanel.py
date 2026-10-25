@@ -22,11 +22,14 @@ from pathlib import Path
 from PyQt5.QtCore import QSettings, pyqtSignal
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                              QDoubleSpinBox, QFileDialog, QFormLayout,
-                             QGroupBox, QHBoxLayout, QLineEdit, QPushButton,
-                             QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QPushButton, QScrollArea, QSpinBox, QTabWidget,
+                             QVBoxLayout, QWidget)
 
 from ..config import PipelineConfig
+from ..fingerprint import describe_meta, get_describer
 from ..mods import CATEGORIES, MODS, ORDER, resolve_mods
+from ..params import ParamSpec
 from ..registry import list_detectors, normalize_config
 from .bus import bus
 
@@ -61,6 +64,58 @@ def _tip(widget, text: str):
     """Attach a hover help text with the parameter's meaning / effect / when to tune."""
     widget.setToolTip(text)
     return widget
+
+
+def _param_widget(spec: ParamSpec, value=None):
+    """Build one Qt widget from a Qt-free :class:`ParamSpec`."""
+    value = spec.default if value is None else value
+    if spec.kind == "bool":
+        w = QCheckBox()
+        w.setChecked(bool(value))
+        return w
+    if spec.kind == "choice":
+        w = QComboBox()
+        for choice in spec.choices:
+            w.addItem(str(choice), choice)
+        idx = w.findData(value)
+        w.setCurrentIndex(idx if idx >= 0 else 0)
+        return w
+    if spec.kind == "str":
+        return QLineEdit(str(value))
+    if spec.kind == "int":
+        w = QSpinBox()
+        lo = int(spec.minimum) if spec.minimum is not None else -2_000_000_000
+        hi = int(spec.maximum) if spec.maximum is not None else 2_000_000_000
+        lo = max(lo, -2_000_000_000)
+        hi = min(hi, 2_000_000_000)
+        w.setRange(lo, max(lo, hi))
+        w.setValue(int(value))
+        return w
+    lo = spec.minimum if spec.minimum is not None else -1e12
+    hi = spec.maximum if spec.maximum is not None else 1e12
+    step = 0.01 if abs(float(value)) < 1.0 else 0.1
+    return _spin(float(lo), float(hi), float(value), step=step)
+
+
+def _widget_value(widget):
+    if isinstance(widget, QCheckBox):
+        return widget.isChecked()
+    if isinstance(widget, QComboBox):
+        return widget.currentData()
+    if isinstance(widget, QLineEdit):
+        return widget.text()
+    return widget.value()
+
+
+def _connect_value(widget, slot) -> None:
+    if isinstance(widget, QCheckBox):
+        widget.stateChanged.connect(slot)
+    elif isinstance(widget, QComboBox):
+        widget.currentIndexChanged.connect(slot)
+    elif isinstance(widget, QLineEdit):
+        widget.textChanged.connect(slot)
+    else:
+        widget.valueChanged.connect(slot)
 
 
 class ParamPanel(QWidget):
@@ -128,13 +183,24 @@ class ParamPanel(QWidget):
         self.p_diff = _spin(0.0, 1e6, 500.0, " pA", 100.0)
 
         # --- event description / fingerprint (mod "describe") ---
+        # The describer list and every parameter row come from the registry, so
+        # adding a describer never requires touching this panel.
         self.describer = QComboBox()
-        self.describer.addItem("DP+BIC 台阶", "dp_bic")
-        self.describer.addItem("标量特征", "scalar")
-        self.fp_kmax = _spin(1, 200, 30, "", 1)
-        self.fp_tau = _spin(10, 5000, 250, " µs", 10)
-        self.fp_amp = _spin(0, 500, 10, " pA", 1)
-        self.fp_snr = _spin(0, 50, 0.0, "", 0.5)
+        for info in describe_meta():
+            suffix = {"beta": "（测试）",
+                      "experimental": "（实验性）"}.get(info["maturity"], "")
+            self.describer.addItem(info["label"] + suffix, info["id"])
+        idx_default = self.describer.findData("dp_bic")
+        self.describer.setCurrentIndex(idx_default if idx_default >= 0 else 0)
+        self.fp_maturity = QLabel("")
+        self.fp_maturity.setWordWrap(True)
+        self.fp_maturity.setStyleSheet("color:#57606a; padding:0 2px;")
+        self._fp_form = QFormLayout()
+        self._fp_form_host = QWidget()
+        self._fp_form_host.setLayout(self._fp_form)
+        self._fp_widgets: dict[str, QWidget] = {}
+        self._fp_values: dict[str, dict] = {}
+        self._fp_current_id = ""
 
         # --- mod checkboxes ---
         self.mod_boxes: dict[str, QCheckBox] = {}
@@ -351,20 +417,13 @@ class ParamPanel(QWidget):
         self.fp_box = QGroupBox("事件指纹（描述器参数）")
         ff = QFormLayout(self.fp_box)
         ff.addRow("描述器", self.describer)
-        ff.addRow("最大段数", self.fp_kmax)
-        ff.addRow("最小驻留 (µs)", self.fp_tau)
-        ff.addRow("最小跃变 (pA)", self.fp_amp)
-        ff.addRow("最小显著度 (0=关)", self.fp_snr)
+        ff.addRow(self.fp_maturity)
+        ff.addRow(self._fp_form_host)
         _tip(self.describer,
-             "事件内描述器\n"
-             "DP+BIC 台阶：把事件体切成若干恒定电平段，输出段电平、宽度与跃变。\n"
-             "标量特征：整事件一组统计量，不切段，作为对照基线。")
-        _tip(self.fp_kmax, "最大段数\nDP 搜索的段数上限。越大越能描述复杂形状，也越慢。")
-        _tip(self.fp_tau, "最小驻留 (µs)\n短于此值的段会并入相邻段，避免把噪声当指纹。")
-        _tip(self.fp_amp, "最小跃变 (pA)\n相邻段电平差小于此值就合并。")
-        _tip(self.fp_snr, "最小显著度 (0=关)\n"
-                          "(|跃变|/σ)·√(驻留·采样率) 下限；低于阈值的段并入相邻段。\n"
-                          "源实现未启用此门控，默认 0 以保持结果一致。")
+             "事件内描述器（来自注册表）\n"
+             "dp_bic：把事件体切成若干恒定电平段，输出段电平、宽度与跃变。\n"
+             "classic：双阈值滞回候选（非学习对照臂，标为测试）。\n"
+             "scalar：整事件一组统计量，不切段，作为对照基线。")
 
         self.run = QPushButton("重跑检测")
         self.save = QPushButton("存参数")
@@ -392,6 +451,7 @@ class ParamPanel(QWidget):
 
         # restore last selection, then wire change signals
         self._load_settings()
+        self._ensure_fp_form()
         for mid, cb in self.mod_boxes.items():
             cb.stateChanged.connect(lambda _state, m=mid: self._on_mod_toggled(m))
         self.event_mode.currentIndexChanged.connect(self._sync_mode)
@@ -405,13 +465,12 @@ class ParamPanel(QWidget):
                   self.b_merge, self.b_block,
                   self.b_occ, self.b_depth, self.drift_frac, self.drift_iqr,
                   self.p_enter, self.p_exit, self.p_open, self.p_abs, self.p_diff,
-                  self.fp_kmax, self.fp_tau, self.fp_amp, self.fp_snr,
                   self.l0, self.l1):
             w.valueChanged.connect(self._emit_changed)
         for w in (self.l0_en, self.l1_en, self.drift_en, self.b_cross,
                   self.p_volt, self.p_pulse, self.p_rupt):
             w.stateChanged.connect(self._emit_changed)
-        for w in (self.polarity, self.event_mode, self.p_dir, self.describer):
+        for w in (self.polarity, self.event_mode, self.p_dir):
             w.currentIndexChanged.connect(self._emit_changed)
         self.describer.currentIndexChanged.connect(self._sync_describer)
         self.lab.textChanged.connect(self._emit_changed)
@@ -498,10 +557,66 @@ class ParamPanel(QWidget):
         self.fp_box.setVisible("describe" in on)
         self._update_module_summary()
 
-    def _sync_describer(self) -> None:
-        dp = self.describer.currentData() == "dp_bic"
-        for w in (self.fp_kmax, self.fp_tau, self.fp_amp, self.fp_snr):
-            w.setEnabled(dp)
+    def current_describer(self) -> str:
+        return str(self.describer.currentData())
+
+    def set_describer(self, describer_id: str, *, notify: bool = True) -> None:
+        """Select a describer from outside (segment table / compare dialog)."""
+        idx = self.describer.findData(describer_id)
+        if idx < 0 or idx == self.describer.currentIndex():
+            return
+        self.describer.blockSignals(True)
+        self.describer.setCurrentIndex(idx)
+        self.describer.blockSignals(False)
+        self._sync_describer(emit=notify)
+
+    def _ensure_fp_form(self) -> None:
+        if not self._fp_current_id:
+            self._fp_current_id = self.current_describer()
+            self._rebuild_fp_form(self._fp_values.get(self._fp_current_id))
+
+    def _rebuild_fp_form(self, values=None) -> None:
+        """Rebuild the parameter rows for the selected describer from metadata."""
+        while self._fp_form.rowCount():
+            self._fp_form.removeRow(0)
+        self._fp_widgets.clear()
+        try:
+            desc = get_describer(self.current_describer())
+        except KeyError:
+            self.fp_maturity.setText("描述器不可用")
+            return
+        maturity = {
+            "stable": "稳定：接口与标定可用于生产结果。",
+            "beta": "测试：可用，但已知限制仍在处理，结果需人工核对。",
+            "experimental": "实验性：仅研究用，默认不得进入生产结果。",
+        }.get(desc.maturity, desc.maturity)
+        self.fp_maturity.setText(
+            f"{maturity} 版本 v{desc.version}，输入 {desc.input_trace}"
+            + (("\n前提：" + "；".join(desc.data_prerequisites))
+               if getattr(desc, "data_prerequisites", ()) else ""))
+        merged = desc.default_params()
+        merged.update(values or {})
+        for spec in desc.params:
+            widget = _param_widget(spec, merged.get(spec.name, spec.default))
+            tip = spec.desc or spec.label or spec.name
+            if spec.minimum is not None or spec.maximum is not None:
+                tip += f"\n范围：{spec.minimum} … {spec.maximum}"
+            _tip(widget, tip)
+            _connect_value(widget, self._emit_changed)
+            self._fp_form.addRow(spec.label or spec.name, widget)
+            self._fp_widgets[spec.name] = widget
+
+    def _collect_fp_params(self) -> dict:
+        return {name: _widget_value(widget)
+                for name, widget in self._fp_widgets.items()}
+
+    def _sync_describer(self, *_args, emit: bool = True) -> None:
+        if self._fp_current_id:
+            self._fp_values[self._fp_current_id] = self._collect_fp_params()
+        self._fp_current_id = self.current_describer()
+        self._rebuild_fp_form(self._fp_values.get(self._fp_current_id))
+        if emit:
+            self._emit_changed()
 
     def _sync_mode(self) -> None:
         mode = self.event_mode.currentData()
@@ -543,12 +658,7 @@ class ParamPanel(QWidget):
     def build_config(self) -> PipelineConfig:
         detector = self.event_mode.currentData()
         params = dict(self._base_cfg.describe_params or {})
-        params.update({
-            "k_max": int(self.fp_kmax.value()),
-            "tau_min_us": float(self.fp_tau.value()),
-            "amp_min_pA": float(self.fp_amp.value()),
-            "snr_min": float(self.fp_snr.value()),
-        })
+        params.update(self._collect_fp_params())
         # Start from the loaded protocol so fields without a widget survive.
         # Only fields actually exposed here are overwritten.
         cfg = replace(
@@ -642,13 +752,12 @@ class ParamPanel(QWidget):
         idx = self.polarity.findData(cfg.polarity)
         self.polarity.setCurrentIndex(idx if idx >= 0 else 0)
         idx = self.describer.findData(cfg.describer)
+        self.describer.blockSignals(True)
         self.describer.setCurrentIndex(idx if idx >= 0 else 0)
-        params = cfg.describe_params or {}
-        self.fp_kmax.setValue(int(params.get("k_max", 30)))
-        self.fp_tau.setValue(float(params.get("tau_min_us", 250.0)))
-        self.fp_amp.setValue(float(params.get("amp_min_pA", 10.0)))
-        self.fp_snr.setValue(float(params.get("snr_min", 0.0)))
-        self._sync_describer()
+        self.describer.blockSignals(False)
+        self._fp_current_id = self.current_describer()
+        self._fp_values[self._fp_current_id] = dict(cfg.describe_params or {})
+        self._rebuild_fp_form(self._fp_values[self._fp_current_id])
         self._set_mods(cfg.enabled_mods, notify=False)
 
     # ---------------- actions ----------------

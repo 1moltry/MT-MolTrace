@@ -51,6 +51,7 @@ class PipelineConfig:
 
     # --- event description / fingerprint (mod "describe") ---
     describer: str = "dp_bic"          # "dp_bic" (segments) or "scalar"
+    describers: tuple[str, ...] = ()   # extra describers written alongside `describer`
     describe_params: dict[str, float] = field(default_factory=dict)
                                        # overrides for the describer's ParamSpec defaults
 
@@ -140,6 +141,7 @@ class PipelineConfig:
         # JSON has no tuples: canonicalize collection fields on every path so
         # save -> load preserves equality and callers can compare configurations.
         self.enabled_mods = tuple(self.enabled_mods or ())
+        self.describers = tuple(self.describers or ())
         self.describe_params = dict(self.describe_params or {})
 
     def save(self, path: str | Path) -> None:

@@ -15,7 +15,7 @@ Each enabled mod (see :mod:`nanopore.mods`) adds its stage:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ class AnalysisResult:
     df: pd.DataFrame               # kept events (feature table)
     df_excluded: pd.DataFrame | None
     descs: list | None = None      # per-kept-event EventDescription (mod "describe")
+    desc_extra: dict = field(default_factory=dict)  # {describer_id: descriptions}
     detector_id: str = ""
     detector_rejected: int = 0
     enabled_mods: tuple[str, ...] = ()
@@ -50,11 +51,14 @@ class AnalysisResult:
     config: PipelineConfig | None = None   # normalized config used for this run
 
 
-def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> AnalysisResult:
+def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True,
+            cancel=None) -> AnalysisResult:
     """Run the base pipeline plus ``cfg.enabled_mods`` on an already-read record.
 
     ``with_descriptions=False`` skips the (potentially slow) per-event describe
     stage; the GUI computes descriptions lazily for the selected event instead.
+    ``cancel()`` (optional) is polled between events during description and
+    raises ``RuntimeError("已取消")`` when it returns true.
     """
     cfg = normalize_config(cfg)
     mods = set(resolve_mods(cfg.enabled_mods))
@@ -165,7 +169,8 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
     anomaly_enabled = "anomaly" in mods
     i0_used = bool(detector_id == "burst" and i0_for_detect is not None)
     result = AnalysisResult(
-        rec, lv, filtered, det, i0_profile, anom, df, df_excluded, descs,
+        rec, lv, filtered, det, i0_profile, anom, df, df_excluded,
+        descs=descs,
         detector_id=detector_id,
         detector_rejected=len(det.rejected),
         enabled_mods=tuple(sorted(mods)),
@@ -180,7 +185,12 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
         # second read of the ABF.
         from .fingerprint import describe_result
 
-        result.descs = describe_result(result)
+        result.descs = describe_result(result, cancel=cancel)
+        primary_id = result.descs[0].describer if result.descs else cfg.describer
+        for did in (cfg.describers or ()):
+            if did and did != primary_id:
+                result.desc_extra[did] = describe_result(
+                    result, describer_id=did, cancel=cancel)
     return result
 
 

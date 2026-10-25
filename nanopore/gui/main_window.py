@@ -88,7 +88,11 @@ class MainWindow(QMainWindow):
         bus.event_selected.connect(self._on_select)
         bus.description_ready.connect(self._on_description)
         bus.roi_rerun.connect(ctrl_mod.controller.rerun_roi)
+        self.segments.describer_changed.connect(self._on_describer_changed)
+        self.segments.comparison_changed.connect(self._on_comparison_changed)
+        self.segments.compare_toggled.connect(self._on_compare_toggled)
         self._current_number: int | None = None
+        self._export_worker = None
 
         if detector:
             self.params.set_detector(detector)
@@ -228,6 +232,12 @@ class MainWindow(QMainWindow):
         self.segments.segment_selected.connect(self.slice.highlight_segment)
         bar.addSeparator()
         bar.addAction(self.act_fp)
+        self.act_export = QAction("导出指纹…", self)
+        self.act_export.setToolTip(
+            "用当前描述器与参数为本次载入文件重新计算全部事件的分段，\n"
+            "写出 <名>_fingerprints.xlsx / .json（与批量处理同一套列）。")
+        self.act_export.triggered.connect(self._export_fingerprints)
+        bar.addAction(self.act_export)
 
     def _on_fingerprint_toggled(self, enabled: bool) -> None:
         self.params.set_mod_enabled("describe", enabled)
@@ -263,6 +273,33 @@ class MainWindow(QMainWindow):
         dlg.use_detector.connect(self.set_detector)
         dlg.exec_()
 
+    def _export_fingerprints(self) -> None:
+        """Write this file's fingerprints with the same writer the batch uses."""
+        c = ctrl_mod.controller
+        if c.rec is None or c.analysis is None:
+            bus.status.emit("请先打开一个 .abf 文件")
+            return
+        out = QFileDialog.getExistingDirectory(self, "选择指纹导出目录")
+        if not out:
+            return
+        cfg = self.params.build_config()
+        if "describe" not in cfg.enabled_mods:
+            # The user explicitly asked for fingerprints; enable the mod so the
+            # protocol that produced the files is self-describing.
+            self.params.set_mod_enabled("describe", True)
+            cfg = self.params.build_config()
+        c.set_config(cfg)
+        worker = ctrl_mod.ExportDescriptionsWorker(c.analysis, c.rec, Path(out), cfg)
+        self._export_worker = worker
+        worker.progress.connect(
+            lambda i, n: bus.status.emit(f"导出指纹 {i}/{n} …"))
+        worker.done.connect(
+            lambda paths: bus.status.emit(f"指纹已导出: {paths['xlsx']}"))
+        worker.failed.connect(
+            lambda msg: bus.status.emit(f"导出失败: {msg}"))
+        bus.status.emit("正在计算并导出指纹 …")
+        worker.start()
+
     # ---- results / selection ---------------------------------------------
     def _on_results(self) -> None:
         c = ctrl_mod.controller
@@ -278,6 +315,7 @@ class MainWindow(QMainWindow):
             c.df_excluded, anomaly_enabled=anomaly_enabled,
             detector_rejected=detector_rejected)
         self.slice.clear()
+        self.segments.set_current_describer(c.cfg.describer or "dp_bic")
         self.segments.clear()
         self._current_number = None
 
@@ -330,9 +368,11 @@ class MainWindow(QMainWindow):
         self.scatter.highlight(idx)
         self._current_number = idx + 1
         self._show_row(c.df.iloc[idx], idx + 1)
-        c.describe_event(idx)
+        c.describe_event(idx, self.segments.current_describer())
+        if self.segments.is_comparing():
+            c.describe_event(idx, self.segments.comparison_describer())
 
-    def _on_description(self, event_id: int, desc) -> None:
+    def _on_description(self, event_id: int, desc, describer_id: str = "") -> None:
         """Fill the slice/table when the selected event's description arrives."""
         if event_id != self._current_number:
             return
@@ -341,9 +381,41 @@ class MainWindow(QMainWindow):
         if c.df is None or not (0 <= idx < len(c.df)) or c.rec is None:
             return
         sr = c.rec.sample_rate_hz
-        self.slice.set_row(c.df.iloc[idx], c.rec.current, sr,
-                           number=event_id, desc=desc)
-        self.segments.set_description(desc, sr)
+        primary = self.segments.current_describer()
+        compare = (self.segments.comparison_describer()
+                   if self.segments.is_comparing() else None)
+        if describer_id == primary:
+            self.slice.set_row(c.df.iloc[idx], c.rec.current, sr,
+                               number=event_id, desc=desc)
+            self.segments.set_description(desc, sr, describer_id)
+            if compare and compare != primary:
+                c.describe_event(idx, compare)
+        elif compare and describer_id == compare:
+            self.segments.set_comparison(desc, sr, describer_id)
+
+    def _on_describer_changed(self, describer_id: str) -> None:
+        """The segment table switched describers: reuse the event, redescription only."""
+        self.params.set_describer(describer_id, notify=False)
+        c = ctrl_mod.controller
+        c.set_config(self.params.build_config())
+        if self._current_number is not None:
+            c.describe_event(self._current_number - 1, describer_id)
+
+    def _on_comparison_changed(self, describer_id: str) -> None:
+        if self._current_number is not None:
+            ctrl_mod.controller.describe_event(self._current_number - 1,
+                                               describer_id)
+
+    def _on_compare_toggled(self, enabled: bool) -> None:
+        if not enabled:
+            self.segments.set_comparison(None, 0.0)
+            return
+        if self._current_number is not None:
+            idx = self._current_number - 1
+            c = ctrl_mod.controller
+            c.describe_event(idx, self.segments.current_describer())
+            if self.segments.comparison_describer() != self.segments.current_describer():
+                c.describe_event(idx, self.segments.comparison_describer())
 
     def closeEvent(self, event) -> None:       # noqa: N802 — Qt signature
         """When opened from the home workbench, X returns there instead of quitting."""
@@ -365,14 +437,23 @@ class MainWindow(QMainWindow):
         c = ctrl_mod.controller
         self.wave.focus_event(float(row["t1"]), float(row["t2"]))
         desc = None
+        did = self.segments.current_describer()
         if number is not None:
-            desc = c.cached_description(number - 1)
+            desc = c.cached_description(number - 1, did)
         sr = c.rec.sample_rate_hz if c.rec is not None else 0.0
         self.slice.set_row(row, c.rec.current if c.rec is not None else None,
                            sr, number=number, desc=desc)
         if desc is not None:
-            self.segments.set_description(desc, sr)
+            self.segments.set_description(desc, sr, did)
         elif number is not None and "describe" in c.cfg.enabled_mods:
             self.segments.set_pending()
         else:
             self.segments.clear()
+        if number is not None and self.segments.is_comparing():
+            compare = self.segments.comparison_describer()
+            desc_b = c.cached_description(number - 1, compare)
+            if desc_b is not None:
+                self.segments.set_comparison(desc_b, sr, compare)
+            else:
+                # never leave the previous event's comparison rows visible
+                self.segments.set_comparison(None, sr)

@@ -17,6 +17,8 @@ from PyQt5.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QProgressBar, QPushButton, QVBoxLayout)
 
 from ..pipeline import run_batch
+from ..fingerprint import describe_meta
+from ..mods import resolve_mods
 from ..registry import list_detectors, normalize_config, resolve_detector_id
 
 
@@ -55,7 +57,8 @@ class BatchWorker(QThread):
     def run(self) -> None:
         try:
             reports = run_batch(self.files, self.out_dir, self.cfg,
-                                progress=self._on_progress)
+                                progress=self._on_progress,
+                                cancel=lambda: self._cancel)
             self.finished_ok.emit(reports)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -114,6 +117,24 @@ class BatchDialog(QDialog):
         algo_row.addWidget(self.algo_note, 1)
         self._on_detector()
 
+        self.describer = QComboBox()
+        for info in describe_meta():
+            suffix = {"beta": "（测试）",
+                      "experimental": "（实验性）"}.get(info["maturity"], "")
+            self.describer.addItem(info["label"] + suffix, info["id"])
+        didx = self.describer.findData(cfg.describer)
+        self.describer.setCurrentIndex(didx if didx >= 0 else 0)
+        self.describer.currentIndexChanged.connect(self._on_describer)
+        self.describer_note = QLabel("")
+        self.describer_note.setStyleSheet("color:#57606a;")
+        desc_row = QHBoxLayout()
+        desc_row.addWidget(QLabel("描述器"))
+        desc_row.addWidget(self.describer)
+        desc_row.addWidget(self.describer_note, 1)
+        self.anomaly_note = QLabel("")
+        self.anomaly_note.setStyleSheet("color:#8c6d1f;")
+        self._refresh_notes()
+
         self.bar = QProgressBar()
         self.bar.setFormat("%v / %m 个文件")
         self.log = QPlainTextEdit()
@@ -136,6 +157,8 @@ class BatchDialog(QDialog):
         lay.addWidget(self.files, 1)
         lay.addLayout(out_row)
         lay.addLayout(algo_row)
+        lay.addLayout(desc_row)
+        lay.addWidget(self.anomaly_note)
         lay.addWidget(self.bar)
         lay.addWidget(self.log, 1)
         lay.addLayout(btn_row)
@@ -186,6 +209,27 @@ class BatchDialog(QDialog):
             self.algo_note.setText("驻留包络去抖；参数与主界面一致。")
         else:
             self.algo_note.setText("边界在 50% 交叉；参数与主界面一致。")
+        self._refresh_notes()
+
+    def _on_describer(self, *_args) -> None:
+        did = str(self.describer.currentData())
+        self._cfg = normalize_config(replace(self._cfg, describer=did))
+        self._refresh_notes()
+
+    def _refresh_notes(self) -> None:
+        if not hasattr(self, "describer_note"):
+            return
+        mods = set(resolve_mods(self._cfg.enabled_mods))
+        if "describe" in mods:
+            self.describer_note.setText(
+                f"开启：输出 <名>_fingerprints.xlsx / .json "
+                f"（描述器 {self._cfg.describer}）")
+        else:
+            self.describer_note.setText("未启用；勾选「事件指纹（分段）」后导出")
+        self.describer.setEnabled(True)
+        self.anomaly_note.setText(
+            "异常识别：开（仅检测后剔除，不改变事件边界）"
+            if "anomaly" in mods else "异常识别：关（结果标记为未筛查）")
 
     def _open_output(self) -> None:
         out = self.out_edit.text().strip()
@@ -206,6 +250,11 @@ class BatchDialog(QDialog):
             self.detector.setCurrentIndex(idx if idx >= 0 else 0)
             self.detector.blockSignals(False)
             self._on_detector()
+            didx = self.describer.findData(self._cfg.describer)
+            self.describer.blockSignals(True)
+            self.describer.setCurrentIndex(didx if didx >= 0 else 0)
+            self.describer.blockSignals(False)
+            self._refresh_notes()
 
     def selected_files(self) -> list[Path]:
         items = [self.files.item(i).text() for i in range(self.files.count())]
@@ -240,9 +289,11 @@ class BatchDialog(QDialog):
         else:
             valid = (f"{rep.valid_pct:.0f}%" if rep.valid_pct is not None
                      else "未筛查")
+            described = (f"，描述 {rep.describer}" if getattr(rep, "describer", "")
+                         else "")
             self._log(f"[{i}/{total}] {name}: {rep.n_events} 事件 "
                       f"(候选 {rep.n_events_raw}，检测规则剔除 "
-                      f"{rep.n_detector_rejected})，有效 {valid}")
+                      f"{rep.n_detector_rejected})，有效 {valid}{described}")
 
     def _on_done(self, reports) -> None:
         ok = sum(1 for r in reports if not getattr(r, "error", ""))

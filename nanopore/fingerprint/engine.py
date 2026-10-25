@@ -13,12 +13,38 @@ from typing import Any, Mapping
 
 from .contracts import EventDescription, data_hash, params_hash
 from .context import build_event_view
-from .registry import EventDescriber, get_describer
+from .registry import DescriberUnavailable, EventDescriber, get_describer
+
+
+def _unavailable(describer: EventDescriber, view, params: dict,
+                 exc: Exception) -> EventDescription:
+    """A safe description for a describer that cannot run (model/dep missing)."""
+    return EventDescription(
+        event_id=getattr(view, "event_id", 0),
+        source=getattr(view, "source", ""),
+        describer=describer.id,
+        describer_version=describer.version,
+        params=dict(params or {}),
+        quality={"valid": False, "reason": str(exc)},
+    )
 
 
 def resolve_params(describer: EventDescriber,
                    overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
     return describer.resolve_params(overrides)
+
+
+def finalize_description(desc: EventDescription, view,
+                         describer: EventDescriber,
+                         params: Mapping[str, Any] | None = None
+                         ) -> EventDescription:
+    """Fill the 1.1 contract fields on a description built outside the engine.
+
+    The research decoders call ``describer.decode(...)`` directly (they already
+    hold a fitted model); this wrapper keeps their output traceable exactly like
+    the normal ``describe_event`` path.
+    """
+    return _finalize(desc, view, describer, resolve_params(describer, params))
 
 
 def view_for(result, index: int, describer: EventDescriber, *,
@@ -92,17 +118,22 @@ def describe_event(result, index: int, describer: EventDescriber, *,
     """Describe one kept event of an ``AnalysisResult``."""
     resolved = resolve_params(describer, params)
     view = view_for(result, index, describer, input_trace=input_trace)
-    desc = describer.describe(view, resolved)
+    try:
+        desc = describer.describe(view, resolved)
+    except DescriberUnavailable as exc:
+        desc = _unavailable(describer, view, resolved, exc)
     return _finalize(desc, view, describer, resolved)
 
 
 def describe_result(result, cfg=None, *, describer_id: str | None = None,
-                    params: Mapping[str, Any] | None = None
-                    ) -> list[EventDescription]:
+                    params: Mapping[str, Any] | None = None,
+                    progress=None, cancel=None) -> list[EventDescription]:
     """Describe every kept event of an ``AnalysisResult``.
 
     ``cfg`` (a ``PipelineConfig``) supplies the describer id and parameter
     overrides; when omitted the result's own stored config is used.
+    ``progress(done, total)`` and ``cancel()`` let a batch/GUI export report
+    progress and stop between events.
     """
     cfg = cfg if cfg is not None else getattr(result, "config", None)
     desc_id = describer_id or (getattr(cfg, "describer", "") if cfg else "") or "dp_bic"
@@ -111,11 +142,19 @@ def describe_result(result, cfg=None, *, describer_id: str | None = None,
     describer = get_describer(desc_id)
     resolved = resolve_params(describer, overrides)
 
+    total = len(result.df)
     out: list[EventDescription] = []
-    for i in range(len(result.df)):
+    for i in range(total):
+        if cancel is not None and cancel():
+            raise RuntimeError("已取消")
         view = view_for(result, i, describer)
-        out.append(_finalize(describer.describe(view, resolved), view,
-                             describer, resolved))
+        try:
+            desc = describer.describe(view, resolved)
+        except DescriberUnavailable as exc:
+            desc = _unavailable(describer, view, resolved, exc)
+        out.append(_finalize(desc, view, describer, resolved))
+        if progress is not None:
+            progress(i + 1, total)
     return out
 
 
@@ -129,6 +168,9 @@ def describe_rows_compat(df, rec, cfg) -> list[EventDescription]:
     out: list[EventDescription] = []
     for i, (_, row) in enumerate(df.iterrows(), start=1):
         view = view_from_row(rec, row, event_id=i)
-        out.append(_finalize(describer.describe(view, resolved), view,
-                             describer, resolved))
+        try:
+            desc = describer.describe(view, resolved)
+        except DescriberUnavailable as exc:
+            desc = _unavailable(describer, view, resolved, exc)
+        out.append(_finalize(desc, view, describer, resolved))
     return out

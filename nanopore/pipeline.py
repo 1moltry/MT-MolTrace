@@ -46,13 +46,16 @@ class FileReport:
     detector: str = ""
     anomaly_enabled: bool = False
     n_detector_rejected: int = 0
+    describer: str = ""
+    extra_describers: tuple[str, ...] = ()
 
 
-def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd.DataFrame, FileReport]:
+def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig,
+                 cancel=None) -> tuple[pd.DataFrame, FileReport]:
     t0 = time.perf_counter()
     label = cfg.label or abf_path.stem
     rec = read_abf(abf_path)
-    res = analyze(rec, cfg)
+    res = analyze(rec, cfg, cancel=cancel)
     mods = set(resolve_mods(cfg.enabled_mods))
 
     stem = abf_path.stem
@@ -70,6 +73,12 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
     if "describe" in mods and res.descs is not None:
         write_fingerprints(res.descs, out_dir, stem, fs=rec.sample_rate_hz,
                            source=abf_path.name, source_id=source_id)
+        # Extra describers get their own files; the primary keeps the
+        # historical <stem>_fingerprints.* name so old consumers stay valid.
+        for did, descs in (res.desc_extra or {}).items():
+            write_fingerprints(descs, out_dir, f"{stem}_fingerprints_{did}",
+                               fs=rec.sample_rate_hz, source=abf_path.name,
+                               source_id=source_id)
 
     if "waveform_export" in mods:
         # The waveform file carries the same event_key as the fingerprint
@@ -124,26 +133,33 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
         detector=res.detector_id,
         anomaly_enabled=res.anomaly_enabled,
         n_detector_rejected=res.detector_rejected,
+        describer=(res.descs[0].describer if res.descs else ""),
+        extra_describers=tuple(res.desc_extra or ()),
     )
     return res.df, report
 
 
 def run_batch(files: list[Path], out_dir: Path, cfg: PipelineConfig,
-              progress=None) -> list[FileReport]:
+              progress=None, cancel=None) -> list[FileReport]:
     """Process ``files`` into ``out_dir``, continuing past a bad file.
 
     ``progress`` (optional) is called as ``progress(i, total, file_name, report)``
-    before each file finishes, so a GUI can show a live counter.
+    before each file finishes, so a GUI can show a live counter. ``cancel``
+    (optional) is polled during detection/description and between files.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     mods = set(resolve_mods(cfg.enabled_mods))
     reports: list[FileReport] = []
     dataset: list[tuple[str, pd.DataFrame]] = []   # (source_file, kept events)
     for i, f in enumerate(files, start=1):
+        if cancel is not None and cancel():
+            raise RuntimeError("已取消")
         try:
-            df, rep = process_file(f, out_dir, cfg)
+            df, rep = process_file(f, out_dir, cfg, cancel=cancel)
             dataset.append((f.name, df))
         except Exception as exc:  # keep batch going on a bad file
+            if cancel is not None and cancel():
+                raise
             rep = FileReport(file=f.name, label=cfg.label or f.stem, duration_s=0.0,
                              n_events_raw=0, n_events=0, n_brief=0, valid_pct=0.0,
                              level0=0.0, error=f"{type(exc).__name__}: {exc}")
@@ -173,6 +189,9 @@ def run_batch(files: list[Path], out_dir: Path, cfg: PipelineConfig,
             "anomalies": "; ".join(f"{k}x{v}" for k, v in rep.anomalies.items()),
             "removed": "; ".join(f"{k}x{v}" for k, v in rep.removed.items()),
             "error": rep.error, "elapsed_s": round(rep.elapsed_s, 1),
+            # appended in phase 5; old columns keep their position
+            "describer": rep.describer,
+            "extra_describers": ",".join(rep.extra_describers),
         })
     if "dataset_export" in mods:
         write_combined_dataset(build_combined_dataset(dataset), out_dir / "dataset_all.csv")

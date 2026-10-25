@@ -79,10 +79,23 @@ class HomeWindow(QMainWindow):
             "使用教程",
             "界面说明、参数解释、输出文件与常见问题。",
             self._tutorial)
+        self.card_research = self._card(
+            "指纹研究（实验性）",
+            "从事件内部轨迹拟合形状词表，并叠加解码结果。默认不启用。",
+            self._research)
         grid.addWidget(self.card_open, 0, 0)
         grid.addWidget(self.card_batch, 0, 1)
         grid.addWidget(self.card_compare, 1, 0)
         grid.addWidget(self.card_tutorial, 1, 1)
+        grid.addWidget(self.card_research, 2, 0)
+        research_note = QLabel(
+            "实验性：旧形状词表 AUC 0.674 / 0.715，低于 0.85 门槛；"
+            "研究结果只能用于探索，不得当作结论。")
+        research_note.setWordWrap(True)
+        research_note.setStyleSheet(
+            "color:#8a4b00; background:#fff4e5; border:1px solid #f0c36d;"
+            "border-radius:8px; padding:12px;")
+        grid.addWidget(research_note, 2, 1)
         lay.addLayout(grid)
 
         lay.addSpacing(10)
@@ -152,6 +165,13 @@ class HomeWindow(QMainWindow):
 
         dlg = CompareDialog(current_path=None, cfg=load_saved_config(), parent=self)
         dlg.open_requested.connect(self._open_path)
+        dlg.exec_()
+
+    def _research(self) -> None:
+        from .parampanel import load_saved_config
+        from .research import ResearchDialog
+
+        dlg = ResearchDialog(load_saved_config(), self)
         dlg.exec_()
 
     def _tutorial(self) -> None:

@@ -61,6 +61,10 @@ HIDDEN_IMPORTS = (
     # explicit package import: the fingerprint layer registers its describers
     # on import, and the GUI imports it lazily inside worker methods
     "nanopore.fingerprint",
+    # experimental shape research: lazy imports are invisible to PyInstaller
+    "nanopore.fingerprint.research",
+    "ruptures",
+    "sklearn.cluster",
 )
 
 # Trim the bundle: Qt modules and dev tooling this GUI never touches. Building
@@ -150,6 +154,7 @@ def ensure_build_python(venv: Path) -> str:
         project = tomllib.load(fh)["project"]
     deps = (list(project["dependencies"])
             + list(project.get("optional-dependencies", {}).get("gui", []))
+            + list(project.get("optional-dependencies", {}).get("research", []))
             + ["pyinstaller", "pefile"])
     run([py_s, "-m", "pip", "install", *deps])
     return py_s

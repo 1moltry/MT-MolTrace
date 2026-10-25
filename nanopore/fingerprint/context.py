@@ -89,6 +89,55 @@ def estimate_blockade_baseline(body: np.ndarray, pct: float = 15.0) -> float:
     return float(np.percentile(x, pct)) if x.size >= 10 else float("nan")
 
 
+def blockade_percentile(direction: int) -> float:
+    """Blockade-side percentile for an event direction.
+
+    Downward blockades sit below the open pore, so the blockade baseline is
+    the body's p15. Upward blockades sit above it, so p85 is the matching
+    statistic. Unknown/bidirectional events have no single blockade side; p15
+    stays as the legacy fallback and the view is flagged as ambiguous.
+    """
+    return 85.0 if int(direction) > 0 else 15.0
+
+
+def _direction_from_body(body: np.ndarray, i_open: float) -> int:
+    """Infer direction from the body when the feature row has no signed mean."""
+    x = np.asarray(body, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 10 or not np.isfinite(i_open):
+        return 0
+    up = float(np.percentile(x, 97)) - float(i_open)
+    down = float(i_open) - float(np.percentile(x, 3))
+    thr = max(1.0, 0.05 * abs(float(i_open)))
+    if up > thr and down > thr:
+        return 0
+    if down > max(up, thr):
+        return -1
+    if up > max(down, thr):
+        return 1
+    return 0
+
+
+def baseline_is_ambiguous(body: np.ndarray, i_open: float, sigma: float,
+                          direction: int) -> bool:
+    """True when the body has significant excursions on *both* sides.
+
+    Such a body is bidirectional or multi-level: a single ``i_blockade`` cannot
+    describe it honestly, so describers must carry a quality flag instead of
+    silently forcing one baseline.
+    """
+    x = np.asarray(body, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 10 or not np.isfinite(i_open):
+        return True
+    if int(direction) == 0:
+        return True
+    up = float(np.percentile(x, 97)) - float(i_open)
+    down = float(i_open) - float(np.percentile(x, 3))
+    thr = max(3.0 * (sigma if np.isfinite(sigma) and sigma > 0 else 0.0), 1.0)
+    return bool(up > thr and down > thr)
+
+
 # --------------------------------------------------------------------------- #
 # Shared construction
 # --------------------------------------------------------------------------- #
@@ -105,12 +154,13 @@ def _event_samples(row: Mapping, fs: float, n: int) -> tuple[int, int]:
     return s, e
 
 
-def _direction_from_row(row: Mapping, i_open: float, i_blockade: float) -> int:
+def _direction_from_row(row: Mapping, i_open: float,
+                        body: np.ndarray | None = None) -> int:
     mean = _num(row, "mean")
     if mean is not None and float(mean) != 0.0:
         return -1 if float(mean) < 0 else 1
-    if np.isfinite(i_open) and np.isfinite(i_blockade) and i_blockade != i_open:
-        return -1 if i_blockade < i_open else 1
+    if body is not None:
+        return _direction_from_body(body, i_open)
     return 0
 
 
@@ -239,15 +289,20 @@ def build_event_view(result, index: int, *, input_trace: str | None = None,
         i_open, i_open_source = estimate_i_open(analysis), "view:p97"
 
     body = analysis[max(0, s - cs):max(0, e - cs)]
-    i_blockade = estimate_blockade_baseline(body)
+    direction = _direction_from_row(row, i_open, body)
+    pct = blockade_percentile(direction)
+    i_blockade = estimate_blockade_baseline(body, pct)
     if np.isfinite(i_blockade):
-        i_blockade_source = "view:body_p15"
+        i_blockade_source = f"view:body_p{int(pct)}"
     else:
         i_blockade, i_blockade_source = i_open, "fallback:i_open"
 
     sigma = estimate_sigma_open(analysis, i_open,
                                 depth_pA=abs(i_open - i_blockade))
     sigma_source = "view:open_band_mad" if np.isfinite(sigma) else "unavailable"
+    ambiguous = baseline_is_ambiguous(body, i_open, sigma, direction)
+    if ambiguous:
+        i_blockade_source += ":ambiguous"
 
     voltage = _slice_or_none(getattr(rec, "protocol_voltage", None), cs, ce)
     i0_window = None
@@ -267,6 +322,8 @@ def build_event_view(result, index: int, *, input_trace: str | None = None,
         "i0_source": getattr(result, "i0_source", ""),
         "anomaly_enabled": bool(getattr(result, "anomaly_enabled", False)),
         "legacy_event_id": index + 1,
+        "direction_source": "feature:mean" if _num(row, "mean") is not None else "view:body_percentiles",
+        "baseline_ambiguous": ambiguous,
     }
 
     return _assemble(
@@ -277,7 +334,7 @@ def build_event_view(result, index: int, *, input_trace: str | None = None,
         i_blockade=i_blockade, i_blockade_source=i_blockade_source,
         sigma=sigma, sigma_source=sigma_source,
         voltage=voltage, i0_window=i0_window,
-        direction=_direction_from_row(row, i_open, i_blockade),
+        direction=direction,
         state=str(_num(row, "state", "A")),
         lowpass_hz=lowpass, effective_bw_hz=effective_bw_hz,
         detector_id=det_id, detector_version=det_version,
@@ -318,16 +375,23 @@ def view_from_row(rec, row: Mapping, *, event_id: int = 1,
         i_open, i_open_source = estimate_i_open(seg), "view:p97"
 
     body = seg[max(0, s - cs):max(0, e - cs)]
-    i_blockade = estimate_blockade_baseline(body)
+    direction = _direction_from_row(row, i_open, body)
+    pct = blockade_percentile(direction)
+    i_blockade = estimate_blockade_baseline(body, pct)
     if np.isfinite(i_blockade):
-        i_blockade_source = "view:body_p15"
+        i_blockade_source = f"view:body_p{int(pct)}"
     else:
         i_blockade, i_blockade_source = i_open, "fallback:i_open"
     sigma = estimate_sigma_open(seg, i_open, depth_pA=abs(i_open - i_blockade))
     sigma_source = "view:open_band_mad" if np.isfinite(sigma) else "unavailable"
+    ambiguous = baseline_is_ambiguous(body, i_open, sigma, direction)
+    if ambiguous:
+        i_blockade_source += ":ambiguous"
 
     sid = source_id or source_id_for_rec(rec)
     voltage = _slice_or_none(getattr(rec, "protocol_voltage", None), cs, ce)
+    meta = dict(meta or {})
+    meta.setdefault("baseline_ambiguous", ambiguous)
     return _assemble(
         event_id=event_id, source=str(getattr(rec, "path", "")), source_id=sid,
         fs=fs, s=s, e=e, cs=cs, ce=ce, analysis=seg, raw=seg,
@@ -337,10 +401,10 @@ def view_from_row(rec, row: Mapping, *, event_id: int = 1,
         i_blockade=i_blockade, i_blockade_source=i_blockade_source,
         sigma=sigma, sigma_source=sigma_source,
         voltage=voltage, i0_window=None,
-        direction=_direction_from_row(row, i_open, i_blockade),
+        direction=direction,
         state=str(_num(row, "state", "A")),
         lowpass_hz=None, effective_bw_hz=effective_bw_hz,
         detector_id=detector_id, detector_version="", detector_params={},
         analysis_params=dict(analysis_params or {}),
-        meta=dict(meta or {}), legacy_event_id=event_id,
+        meta=meta, legacy_event_id=event_id,
     )

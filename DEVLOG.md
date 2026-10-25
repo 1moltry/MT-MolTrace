@@ -8,16 +8,18 @@
 
 ## 当前状态
 
-- 版本 `v3.1.0`；当前分支 `feat/unified-fingerprint-core`。
+- 版本 `v3.1.0`；当前分支 `chore/repo-slimming`。
 - 底座：`level` / `burst` / `plateau` 三种检测器 + 20 列特征表；异常识别与各输出默认关闭，按模块开启。
-- 统一指纹平台：阶段 1-3 完成，阶段 4 待做。计划见 [`PLAN_fingerprint_platform.md`](PLAN_fingerprint_platform.md)。
-- 测试：249 passed（快检 194 / GUI 45 / 集成 10）。
-- 下一步：阶段 4——方向感知的分段边界、整数采样与覆盖、BIC 过分割评测，再进入标注闭环。
+- 统一指纹平台：阶段 1-5、7 完成；阶段 6（标注与评测闭环）待做。计划见 [`PLAN_fingerprint_platform.md`](PLAN_fingerprint_platform.md)。
+- 测试：303 passed（快检 231 / GUI 58 / 集成 14）。
+- 下一步：阶段 6——迁移 cutlab 标注纯逻辑、旧标注迁移与 event_map、区间 F1 报告与 GUI 复核；之后阶段 8 发行自测。
 
 ## 里程碑索引
 
 | 日期 | 里程碑 | 结果 / 关键取舍 |
 |------|--------|-----------------|
+| 2026-10-25 | 阶段 7：实验性形状研究 | PELT/DTW/Fréchet/DBA/词表；实验性 GUI 与 CLI；null 与留一文件入口 |
+| 2026-10-25 | 阶段 4-5：分段正确性与前后端联动 | 方向感知/整数边界/慢出孔修剪；classic 描述器；注册表驱动 GUI；多描述器 CLI |
 | 2026-10-25 | 仓库精简 | DEVLOG 压缩；删除三份已实施 PLAN；清死代码与本地产物 |
 | 2026-10-25 | 阶段 3：描述上下文与稳定身份 | 描述层改吃 `AnalysisResult`；`source_id` + `event_key`；指纹与 `.mat` 可互溯 |
 | 2026-10-25 | 阶段 1-2：检测器目录与配置真值 | 检测器元数据集中到 `registry`；参数面板保留未暴露字段；异常与检测边界解耦 |
@@ -58,6 +60,44 @@
 | 2026-09-04 | M0-M6 v1 | 独立 Python 管线；合成真值回归；6 样例验收 |
 
 ## 近期详细记录
+
+### [2026-10-25] 阶段 7：实验性形状研究发现
+
+**变更**
+- 新增 `nanopore/fingerprint/research/`：`deps`、`curves`、`fragments`、`corpus`、`model`、`nulls`、`workflows`；迁入 PELT 变点、DTW、离散 Fréchet、DBA、变长形状词表与 N1/N2 null。
+- 新增 `shape_vocab` 与 `pelt` 描述器，均标 `experimental`。`shape_vocab` 必须先在研究工作中拟合或加载词表；缺模型/缺依赖时引擎返回 `valid=False` 的可解释描述，不崩溃。
+- `ShapeModel` 支持 JSON 保存/加载（中心、支持度、阈值、参数、来源、`gate_note`）。解码复用 `write_fingerprints`，输出带 `event_key`、`source_id`、全局采样与 manifest。
+- GUI：首页新增「指纹研究（实验性）」入口；工作区含语料、词表缩略图、解码叠加三个页签；缺依赖时禁用拟合/解码并显示安装命令。
+- CLI：新增 `research fit / decode / nulls`，拟合支持 `--nulls` 与 `--leave-one-file`。
+- 依赖：`pyproject` 新增 `research` extra（ruptures / scikit-learn）并加入 `dev`；发行脚本加入 research 依赖与 hidden imports。
+
+**状态**：实验性、默认关闭。旧词表 AUC 0.674（N1tele）/ 0.715（N2phase）低于 0.85 门槛；该事实保留在 `GATE_NOTE`、GUI 警告与导出 payload 中。真实 `GalNAc-1` 冒烟：6 事件 → 4 个中心，解码 3 个片段；GUI 与 CLI 均可跑通。
+
+**测试**：303 passed（快检 231 / GUI 58 / 集成 14）；新增表示/距离、拟合与持久化、null/留一文件、GUI 工作区与真实数据冒烟测试。
+
+**下一步**：阶段 6 标注与评测闭环（尚未做）；之后阶段 8 兼容、文档与发行自测，其中必须实测一次带 research 依赖的发行包。
+
+---
+
+### [2026-10-25] 阶段 4-5：分段正确性、classic 描述器与前后端联动
+
+**变更**
+- 分段：`edge_bounds` 方向感知（向下 p15 / 向上 p85 / 双向带状回孔）；边缘窗改毫秒（25/50 kHz 一致）；`Step` 记录整数起止，降采样余数并入最后一段；慢出孔尾部过渡段整体修剪；BIC 增加 `bic_n_eff` / `bic_penalty` 诊断（默认仍为源行为）。
+- 描述器：新增 `classic` 双阈值滞回候选（beta）；`dp_bic` 版本升到 2 并改标 beta（已知过分割）；双向/多电平体带 `baseline_ambiguous` 质量标记。
+- 评测：新增 `fingerprint/intervals.py`（全局区间、区间 F1、边界位移）；新增 `tests/test_annotation_eval_galnac.py`，用 12 事件 / 97 指纹冻结真值做集成回归。
+- GUI：描述器下拉与参数表单由注册表生成；分段表支持并排比较；描述缓存/代次竞态修复；工具栏“导出指纹”；批量对话框显示检测器/描述器/异常状态并支持描述阶段取消；对比窗口复用纯比较函数并增加描述器指标。
+- CLI：新增 `--describers`（首个写历史文件名，其余写 `_fingerprints_<id>`），保留 `--describe` / `--fp-param` 旧语义。
+- 文档：README / tutorial / DEVELOPMENT 同步描述器、参数、导出与 CLI；PLAN 状态更新到阶段 6。
+
+**关键数据**（GalNAc-1，12 事件 / 97 指纹，冻结事件表，仅评描述层）：`classic` 112 段，区间 F1@0.5 ms = 0.536（P 0.500 / R 0.577），边界位移 0.36 / 0.32 ms；`dp_bic` 195 段，F1 = 0.151；`dp_bic` + `bic_n_eff=-1` 33 段，F1 = 0.062。结论：`classic` 复现已发表基线；`dp_bic` 过分割是真实问题，BIC 自动修正不是解药；`snr_min` 0–50 的 F1 基本不变（0.151–0.154），≥100 召回骤降，默认保持 0。
+
+**测试**：283 passed（快检 218 / GUI 53 / 集成 12）；`Ala.abf` 离屏冒烟通过（37 事件；切换描述器、并排比较、导出正常）。
+
+**兼容**：旧 `--describe` / `--fp-param`、旧 Excel/JSON 列顺序与旧 `event_id` 语义不变；`dp_bic` 仅新增参数（`edge_win_ms`、`trim_exit_frac`、`bic_penalty`、`bic_n_eff`）与特性字段；额外描述器文件另名输出。
+
+**下一步**：阶段 6——迁移 cutlab 标注纯逻辑、旧标注迁移与 `event_map`、区间 F1 报告与 GUI 复核。
+
+---
 
 ### [2026-10-25] 仓库精简
 
