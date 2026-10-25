@@ -34,6 +34,7 @@
 **事件波形导出 完成**：`waveform_export` 模块把每个保留事件的原始电流序列（无余量）导出为 `<名>_events.mat`，供 MATLAB 直接读取。见下方 [2026-10-19]。
 **发行打包 完成**：`release/build_release.py` 一键产出 Windows 免安装 exe + zip（干净源码树，无内部文件）；README 改为用户向，开发文档移入 `DEVELOPMENT.md`。见下方 [2026-10-19]。
 **v3.0.0 完成**：首页工作台 + 三种检测算法统一入口 + 算法对比 + 批量参数编辑；`pytest` 193 passed。
+**阶段 1-2 工程收敛 完成**：统一检测器目录与配置单一真值；异常识别保持可选且与 burst 等检测边界彻底分开；检测器剔除可追溯。见下方 [2026-10-25]。
 
 ---
 
@@ -100,6 +101,22 @@
 ### v3 建议推进顺序
 
 **C1**（特征正确性）→ **C2/C3**（GUI 真 bug）→ **R1**（内存）→ R3/R4/R5 → 冗余清理 → **A2/A3**（算法能力）。
+
+---
+
+## [2026-10-25] 阶段 1-2：检测器目录、配置单一真值与异常解耦
+
+**变更**
+- 新增 `params.py` / `registry.py`：检测器 id、标签、参数归属、电压/I0 能力集中管理；GUI、CLI、批处理、对比窗口不再各写一份选项。`normalize_config` 统一解析检测器与模块依赖，未知 id 告警而非静默降级。
+- `ParamPanel` 改为保存完整载入协议并用 `dataclasses.replace` 增量覆盖；此前 65 个字段中 27 个未暴露字段会在重跑时被重置。`PipelineConfig.load` 对未知键告警；集合字段在构造时规范为 tuple/dict。修复模块全选/仅底座与工具栏指纹开关失步；自动重跑也持久化参数。
+- 异常识别保持检测后的可选后处理：`AnalysisResult`/`FileReport` 记录实际检测器、异常是否启用、I0 是否参与检测；异常关闭时 `valid_pct` 为空，GUI 顶部显示“异常识别：关”，不再显示“剔除 0 / 有效 100%”。
+- `DetectionResult` 新增检测器剔除、屏蔽区间与计数诊断；平台滞回原本丢弃的 pulse-cleared / rupture / threshold 事件进入 `df_excluded`，使用独立 `drop_stage=detector` 与 `plateau:*` 命名空间，不与异常 kind 混用。
+- `df_excluded` 新增 `drop_code` / `drop_stage`；GUI 剔除表改名“剔除 / 异常事件”，显示检测规则剔除数；选中剔除事件不再误用保留事件的指纹缓存。
+- 行为兼容：默认检测事件、特征值、参数默认值与旧版一致；异常仍然默认关闭，且开关不改变 level/burst/plateau 的事件边界。
+
+**测试**：`pytest` **229 passed**。新增注册表/CLI/配置 65 字段往返、未暴露字段保留、异常开关不改变检测、burst+anomaly 边界一致、平台剔除可追溯、GUI 异常空态与剔除选中隔离等测试。真实样例 Ala：37 保留 / 44 候选，`anomaly_enabled=False`，`valid_pct` 为空，excluded 含 `drop_stage`/`drop_code`。
+
+**下一步**：阶段 3——统一事件身份与描述层分析上下文（filtered / dynamic I0 / voltage / 全局坐标），再进入 DP+BIC 方向与过分割优化。
 
 ---
 

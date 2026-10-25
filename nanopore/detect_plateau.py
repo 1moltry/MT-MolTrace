@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .detect import DetectionResult, Event
+from .detect import DetectionRejection, DetectionResult, Event
 
 
 def _runs_of_bool(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -225,12 +225,15 @@ def detect_plateau(
                   or dev_up[a:b].max() > enter_depth_pA)
         if ok:
             keep.append(i)
+    enter_depth_rejected = len(starts) - len(keep)
     starts = np.array([starts[i] for i in keep], dtype=int)
     ends = np.array([ends[i] for i in keep], dtype=int)
 
     # drop first/last partial runs (unknown extent)
+    edge_skipped = 0
     if len(starts) > 2:
         starts, ends = starts[1:-1], ends[1:-1]
+        edge_skipped = 2
 
     fc = cutoff_hz
     tau = max(0.5, (1.0 / (2.0 * np.pi * fc) * fs) if fc else 1.0)
@@ -278,17 +281,21 @@ def detect_plateau(
 
     pulses = _voltage_pulse_intervals(voltage, fs, voltage_tol_mv)
     pstarts = np.array([s for s, _ in pulses], dtype=np.int64)
-    dropped: list[Event] = []
+    rejected: list[DetectionRejection] = []
+    n_pulse = n_rupture = n_threshold = 0
     if exclude_pulse_cleared and pstarts.size:
         events, dr = _split_pulse_cleared(
             events, pstarts, int(round(pulse_tol_ms / 1000.0 * fs)), fs)
-        dropped += dr
+        rejected += [DetectionRejection(e, "plateau:pulse_cleared") for e in dr]
+        n_pulse = len(dr)
     if exclude_rupture:
         events, dr = _split_rupture(events, I, fs)
-        dropped += dr
+        rejected += [DetectionRejection(e, "plateau:rupture") for e in dr]
+        n_rupture = len(dr)
     events, dr = _apply_thresholds(
         events, depth_min_pA, depth_max_pA, min_dwell_ms, dwell_max_ms)
-    dropped += dr
+    rejected += [DetectionRejection(e, "plateau:threshold") for e in dr]
+    n_threshold = len(dr)
 
     if direction == "up":
         levels = np.array([level0, level0 + enter_depth_pA], dtype=float)
@@ -297,10 +304,24 @@ def detect_plateau(
     else:
         levels = np.array([level0, level0 - enter_depth_pA,
                            level0 + enter_depth_pA], dtype=float)
+    m_starts, m_ends = _runs_of_bool(mask)
+    masked_intervals = [(float(a) / fs, float(b) / fs)
+                        for a, b in zip(m_starts, m_ends)]
     return DetectionResult(
         events=events,
         levels_initial=levels,
         sample_rate_hz=fs,
         level0_final=float(base_val),
         level0_refs=np.array([e.level0_ref_pA for e in events], dtype=float),
+        rejected=rejected,
+        masked_intervals=masked_intervals,
+        diagnostics={
+            "enter_depth_rejected": int(enter_depth_rejected),
+            "edge_skipped": int(edge_skipped),
+            "pulse_cleared": int(n_pulse),
+            "rupture": int(n_rupture),
+            "threshold": int(n_threshold),
+            "masked_samples": int(mask.sum()),
+            "masked_regions": len(masked_intervals),
+        },
     )

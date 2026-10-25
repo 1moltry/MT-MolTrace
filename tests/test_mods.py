@@ -287,3 +287,62 @@ def test_gui_module_summary_counts_all_tabs(monkeypatch):
     assert "已选 0" in panel.modbox.title()
     panel._set_mods(["anomaly", "plots"])
     assert "已选 2" in panel.modbox.title()
+
+
+def test_gui_detector_combo_comes_from_registry(monkeypatch):
+    from nanopore.registry import list_detectors
+
+    panel = _panel(monkeypatch)
+    assert [panel.event_mode.itemText(i) for i in range(panel.event_mode.count())] == [
+        spec.label for spec in list_detectors()]
+    assert [panel.event_mode.itemData(i) for i in range(panel.event_mode.count())] == [
+        spec.id for spec in list_detectors()]
+
+
+def test_gui_build_config_preserves_unexposed_fields(monkeypatch):
+    panel = _panel(monkeypatch)
+    expected = {
+        "hist_bins": 321,
+        "update_levels": "all",
+        "dwell_min_frac": 0.42,
+        "plateau_min_dwell_ms": 12.5,
+        "plateau_dwell_max_ms": 345.0,
+        "plateau_depth_min_pA": 3.5,
+        "plateau_depth_max_pA": 999.0,
+        "plateau_voltage_tol_mv": 7.5,
+        "plateau_pulse_tol_ms": 44.0,
+        "plateau_cutoff_hz": 1234.0,
+        "jump_min_ms": 77.0,
+        "noise_sigma_mult": 5.5,
+        "jitter_min_ms": 111.0,
+        "refined_jitter_window_ms": 123.0,
+        "refined_jitter_mild_ratio": 2.5,
+        "refined_jitter_severe_ratio": 7.0,
+        "refined_jitter_osc_floor": 0.5,
+        "refined_blockage_min_ms": 600.0,
+        "refined_blockage_fraction": 0.5,
+        "refined_rupture_iqr_min_pA": 91.0,
+        "refined_rupture_noise_min_ratio": 2.5,
+        "refined_rupture_level_frac_max": 0.3,
+        "refined_jitter_level_frac_max": 0.25,
+        "refined_drift_block_s": 20.0,
+        "refined_drift_min_s": 44.0,
+        "refined_drift_step_pA": 7.0,
+        "refined_drift_rupture_ratio": 5.0,
+    }
+    cfg = PipelineConfig(detector="plateau", **expected)
+    panel.load_config(cfg)
+    built = panel.build_config()
+    for name, value in expected.items():
+        assert getattr(built, name) == value, name
+
+
+def test_gui_set_mods_notifies_toolbar_state(monkeypatch):
+    panel = _panel(monkeypatch)
+    got = []
+    panel.mod_changed.connect(lambda mid, on: got.append((mid, on)))
+    panel._set_mods(["describe"])
+    assert ("describe", True) in got
+    panel._set_mods([])
+    assert got[-1] == ("describe", False)
+    assert "describe" in [mid for mid, on in got if on]

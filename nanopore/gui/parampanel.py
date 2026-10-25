@@ -16,7 +16,7 @@ Layout:
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, fields
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from PyQt5.QtCore import QSettings, pyqtSignal
@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
 
 from ..config import PipelineConfig
 from ..mods import CATEGORIES, MODS, ORDER, resolve_mods
+from ..registry import list_detectors, normalize_config
 from .bus import bus
 
 # Legacy QSettings scope kept after the product rename: existing users keep
@@ -39,9 +40,7 @@ def load_saved_config() -> PipelineConfig:
     raw = QSettings(*_SETTINGS).value("last_config", None)
     if raw:
         try:
-            data = json.loads(str(raw))
-            valid = {f.name for f in fields(PipelineConfig)}
-            return PipelineConfig(**{k: v for k, v in data.items() if k in valid})
+            return PipelineConfig.from_dict(json.loads(str(raw)))
         except Exception:                    # noqa: BLE001 — corrupt settings: defaults
             pass
     return PipelineConfig()
@@ -70,6 +69,9 @@ class ParamPanel(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        # The last loaded protocol is the base for every build_config() call.
+        # UI-owned fields override it; unexposed fields are preserved verbatim.
+        self._base_cfg = PipelineConfig()
         # --- base parameters (always shown) ---
         self.ignore = _spin(0.0, 100.0, 2.0, " ms", 0.5)
         self.pre = _spin(0.0, 500.0, 25.0, " ms", 1.0)
@@ -93,11 +95,10 @@ class ParamPanel(QWidget):
         self.drift_frac = _spin(0.0, 1.0, 0.05, "", 0.01)
         self.drift_iqr = _spin(1.0, 20.0, 3.0, " x", 0.5)
 
-        # --- event detector selector: level / burst / plateau ---
+        # --- event detector selector, generated from the shared registry ---
         self.event_mode = QComboBox()
-        self.event_mode.addItem("电平法（Clampfit）", "level")
-        self.event_mode.addItem("驻留包络去抖（burst）", "burst")
-        self.event_mode.addItem("平台滞回（sweep/plateau）", "plateau")
+        for spec in list_detectors():
+            self.event_mode.addItem(spec.label, spec.id)
         self.ignore_event = _spin(0.0, 2000.0, 50.0, " ms", 5.0)
         self.b_enter = _spin(0.0, 2.0, 0.30, "", 0.05)
         self.b_exit = _spin(0.0, 2.0, 0.20, "", 0.05)
@@ -461,11 +462,18 @@ class ParamPanel(QWidget):
             cb.setChecked(value)
             cb.blockSignals(False)
 
-    def _set_mods(self, ids) -> None:
+    def _set_mods(self, ids, *, notify: bool = True) -> None:
         on = set(resolve_mods(ids))
+        before = {mid: cb.isChecked() for mid, cb in self.mod_boxes.items()}
         for mid in ORDER:
             self._set_checked(mid, mid in on)
         self._update_visibility()
+        for mid in ORDER:
+            enabled = self.mod_boxes[mid].isChecked()
+            if before[mid] != enabled:
+                self.mod_changed.emit(mid, enabled)
+        if notify:
+            self.changed.emit()
         self._save_settings()
 
     def _on_mod_toggled(self, mid: str) -> None:
@@ -507,9 +515,7 @@ class ParamPanel(QWidget):
         last = s.value("last_config", None)
         if last:
             try:
-                data = json.loads(str(last))
-                valid = {f.name for f in fields(PipelineConfig)}
-                self.load_config(PipelineConfig(**{k: v for k, v in data.items() if k in valid}))
+                self.load_config(PipelineConfig.from_dict(json.loads(str(last))))
                 return
             except Exception:                    # noqa: BLE001 — corrupt settings: use defaults
                 pass
@@ -536,7 +542,17 @@ class ParamPanel(QWidget):
     # ---------------- config round-trip ----------------
     def build_config(self) -> PipelineConfig:
         detector = self.event_mode.currentData()
-        return PipelineConfig(
+        params = dict(self._base_cfg.describe_params or {})
+        params.update({
+            "k_max": int(self.fp_kmax.value()),
+            "tau_min_us": float(self.fp_tau.value()),
+            "amp_min_pA": float(self.fp_amp.value()),
+            "snr_min": float(self.fp_snr.value()),
+        })
+        # Start from the loaded protocol so fields without a widget survive.
+        # Only fields actually exposed here are overwritten.
+        cfg = replace(
+            self._base_cfg,
             enabled_mods=self.enabled_ids(),
             filter_lowpass_hz=self.lowpass.value() or None,
             level0=self.l0.value() if self.l0_en.isChecked() else None,
@@ -545,7 +561,6 @@ class ParamPanel(QWidget):
             detector=detector,
             ignore_duration_ms=self.ignore.value(),
             ignore_event_duration_ms=self.ignore_event.value(),
-            event_mode="burst" if detector == "burst" else "level",
             burst_enter_frac=self.b_enter.value(),
             burst_exit_frac=self.b_exit.value(),
             burst_min_gap_ms=self.b_gap.value(),
@@ -574,15 +589,15 @@ class ParamPanel(QWidget):
             dr_pA=self.dr.value(),
             label=self.lab.text(),
             describer=str(self.describer.currentData()),
-            describe_params={
-                "k_max": int(self.fp_kmax.value()),
-                "tau_min_us": float(self.fp_tau.value()),
-                "amp_min_pA": float(self.fp_amp.value()),
-                "snr_min": float(self.fp_snr.value()),
-            },
+            describe_params=params,
         )
+        cfg = normalize_config(cfg)
+        self._base_cfg = cfg
+        return cfg
 
     def load_config(self, cfg: PipelineConfig) -> None:
+        cfg = normalize_config(cfg)
+        self._base_cfg = cfg
         self.ignore.setValue(cfg.ignore_duration_ms)
         self.ignore_event.setValue(cfg.ignore_event_duration_ms)
         self.b_enter.setValue(cfg.burst_enter_frac)
@@ -634,7 +649,7 @@ class ParamPanel(QWidget):
         self.fp_amp.setValue(float(params.get("amp_min_pA", 10.0)))
         self.fp_snr.setValue(float(params.get("snr_min", 0.0)))
         self._sync_describer()
-        self._set_mods(cfg.enabled_mods)
+        self._set_mods(cfg.enabled_mods, notify=False)
 
     # ---------------- actions ----------------
     def _run(self) -> None:

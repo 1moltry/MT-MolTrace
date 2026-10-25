@@ -8,6 +8,7 @@ the batch summary.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,7 +34,7 @@ class FileReport:
     n_events_raw: int
     n_events: int
     n_brief: int
-    valid_pct: float
+    valid_pct: float | None
     level0: float
     levels: list[float] = field(default_factory=list)
     polarity: int = 0
@@ -42,6 +43,9 @@ class FileReport:
     removed: dict = field(default_factory=dict)
     error: str = ""
     elapsed_s: float = 0.0
+    detector: str = ""
+    anomaly_enabled: bool = False
+    n_detector_rejected: int = 0
 
 
 def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd.DataFrame, FileReport]:
@@ -86,17 +90,19 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
     removed: dict[str, int] = {}
     if res.df_excluded is not None and len(res.df_excluded):
         for reason in res.df_excluded["drop_reason"]:
-            for part in str(reason).split(","):
-                removed[part] = removed.get(part, 0) + 1
+            for part in re.split(r"[,|]", str(reason)):
+                if part:
+                    removed[part] = removed.get(part, 0) + 1
 
     report = FileReport(
         file=abf_path.name,
         label=label,
         duration_s=rec.duration_s,
-        n_events_raw=len(res.det.events),
+        n_events_raw=len(res.det.events) + len(res.det.rejected),
         n_events=len(res.df),
         n_brief=sum(1 for e in res.det.events if e.state == "B"),
-        valid_pct=float(res.anom.valid.mean() * 100) if res.anom is not None else 100.0,
+        valid_pct=(float(res.anom.valid.mean() * 100)
+                   if res.anom is not None else None),
         level0=res.lv.level0,
         levels=[round(v, 1) for v in res.lv.levels],
         polarity=res.lv.polarity,
@@ -104,6 +110,9 @@ def process_file(abf_path: Path, out_dir: Path, cfg: PipelineConfig) -> tuple[pd
         anomalies=n_anom,
         removed=removed,
         elapsed_s=time.perf_counter() - t0,
+        detector=res.detector_id,
+        anomaly_enabled=res.anomaly_enabled,
+        n_detector_rejected=res.detector_rejected,
     )
     return res.df, report
 
@@ -128,9 +137,13 @@ def run_batch(files: list[Path], out_dir: Path, cfg: PipelineConfig,
                              n_events_raw=0, n_events=0, n_brief=0, valid_pct=0.0,
                              level0=0.0, error=f"{type(exc).__name__}: {exc}")
         reports.append(rep)
-        status = f"err {rep.error}" if rep.error else (
-            f"{rep.n_events} events (of {rep.n_events_raw} raw), valid {rep.valid_pct:.0f}%"
-        )
+        if rep.error:
+            status = f"err {rep.error}"
+        else:
+            valid = (f"{rep.valid_pct:.0f}%" if rep.valid_pct is not None
+                     else "n/a (anomaly off)")
+            status = (f"{rep.n_events} events (of {rep.n_events_raw} candidates), "
+                      f"valid {valid}")
         print(f"  {f.name}: {status} [{rep.elapsed_s:.1f}s]")
         if progress is not None:
             progress(i, len(files), f.name, rep)
@@ -140,7 +153,10 @@ def run_batch(files: list[Path], out_dir: Path, cfg: PipelineConfig,
         rows.append({
             "file": rep.file, "label": rep.label, "duration_s": round(rep.duration_s, 1),
             "events": rep.n_events, "events_raw": rep.n_events_raw, "brief": rep.n_brief,
-            "valid_pct": round(rep.valid_pct, 1),
+            "valid_pct": (None if rep.valid_pct is None else round(rep.valid_pct, 1)),
+            "detector": rep.detector,
+            "anomaly_enabled": rep.anomaly_enabled,
+            "detector_rejected": rep.n_detector_rejected,
             "level0_pA": round(rep.level0, 1), "n_levels": len(rep.levels),
             "polarity": rep.polarity, "noise_sigma_pA": round(rep.noise_sigma, 2),
             "anomalies": "; ".join(f"{k}x{v}" for k, v in rep.anomalies.items()),

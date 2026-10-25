@@ -26,12 +26,9 @@ from PyQt5.QtWidgets import (QCheckBox, QDialog, QFileDialog, QHBoxLayout,
 from ..analyze import analyze
 from ..config import PipelineConfig
 from ..io import read_abf
+from ..registry import list_detectors, normalize_config
 
-ALGOS = (
-    ("level", "电平法"),
-    ("burst", "驻留包络（burst）"),
-    ("plateau", "平台滞回"),
-)
+ALGOS = tuple((spec.id, spec.label) for spec in list_detectors())
 _COLORS = {
     "level": (31, 119, 180),
     "burst": (255, 127, 14),
@@ -114,11 +111,8 @@ class CompareWorker(QThread):
         try:
             rec = read_abf(self.path)
             for det in self.detectors:
-                cfg = replace(
-                    self.cfg, detector=det,
-                    event_mode="burst" if det == "burst" else "level",
-                    enabled_mods=(),
-                )
+                cfg = normalize_config(replace(
+                    self.cfg, detector=det, enabled_mods=(), event_mode="level"))
                 t0 = time.perf_counter()
                 res = analyze(rec, cfg)
                 elapsed = time.perf_counter() - t0

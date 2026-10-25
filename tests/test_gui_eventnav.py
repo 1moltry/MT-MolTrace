@@ -3,6 +3,7 @@ the zoom slice, and the excluded-events table."""
 
 import os
 import sys
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -157,3 +158,93 @@ def test_excluded_view_lists_and_signals(qapp):
     assert len(picks) == 1
     assert picks[0][1] == 1                                    # 1-based number
     assert float(picks[0][0]["t1"]) == 2.0
+
+
+def test_excluded_view_distinguishes_off_from_no_findings(qapp):
+    view = ExcludedView()
+    view.set_data(None, anomaly_enabled=False)
+    assert "异常识别未启用" in view.summary.text()
+    assert "未筛查" in view.summary.text()
+
+    view.set_data(None, anomaly_enabled=True)
+    assert "未发现异常区间" in view.summary.text()
+
+    df_ex = pd.DataFrame({
+        "t1": [2.0], "t2": [2.1], "toff": [100.0], "mean": [-9.0],
+        "Io": [100.0], "state": ["A"],
+        "drop_stage": ["detector"], "drop_reason": ["plateau:rupture"],
+    })
+    view.set_data(df_ex, anomaly_enabled=False, detector_rejected=1)
+    text = view.summary.text()
+    assert "检测规则剔除 1" in text
+    assert "异常识别未启用" in text
+
+
+def test_excluded_selection_does_not_borrow_kept_fingerprint(qapp, monkeypatch):
+    from PyQt5.QtCore import QSettings
+
+    from nanopore.gui import parampanel as pp
+    from nanopore.gui.controller import controller
+    from nanopore.gui.main_window import MainWindow
+
+    monkeypatch.setattr(pp, "_SETTINGS", ("MOLTRACE-test-excluded", "gui"))
+    QSettings("MOLTRACE-test-excluded", "gui").clear()
+
+    old_rec = controller.rec
+    controller.rec = _rec()
+    win = MainWindow()
+    try:
+        win._current_number = 1
+        win.segments.table.setRowCount(2)
+        win._show_excluded_row(_df().iloc[0], 1)
+        assert win._current_number is None
+        assert win.segments.table.rowCount() == 0
+    finally:
+        controller.rec = old_rec
+        win.close()
+        win.deleteLater()
+
+
+def test_results_summary_marks_anomaly_off(qapp, monkeypatch):
+    from types import SimpleNamespace
+
+    from PyQt5.QtCore import QSettings
+
+    from nanopore.gui import parampanel as pp
+    from nanopore.gui.controller import controller
+    from nanopore.gui.main_window import MainWindow
+
+    monkeypatch.setattr(pp, "_SETTINGS", ("MOLTRACE-test-summary", "gui"))
+    QSettings("MOLTRACE-test-summary", "gui").clear()
+
+    class _RecWithPath(_Rec):
+        path = Path("summary_test.abf")
+
+    df = _event_df()
+    excluded = pd.DataFrame({
+        "t1": [2.0], "t2": [2.1], "toff": [100.0], "mean": [-9.0],
+        "Io": [100.0], "state": ["A"],
+        "drop_stage": ["detector"], "drop_reason": ["plateau:rupture"],
+        "drop_code": ["plateau:rupture"],
+    })
+    old = (controller.rec, controller.df, controller.df_excluded,
+           controller.det, controller.anom, getattr(controller, "analysis", None))
+    win = MainWindow()
+    try:
+        controller.rec = _RecWithPath(_rec().current, 25_000.0)
+        controller.df = df
+        controller.df_excluded = excluded
+        controller.det = SimpleNamespace(events=[])
+        controller.anom = None
+        controller.analysis = SimpleNamespace(
+            detector_id="plateau", detector_rejected=1,
+            anomaly_enabled=False)
+        win._on_results()
+        assert "异常识别：关" in win.anomaly_label.text()
+        assert "检测规则 1" in win.summary_label.text()
+        assert "异常识别未启用" in win.excluded.summary.text()
+    finally:
+        (controller.rec, controller.df, controller.df_excluded,
+         controller.det, controller.anom, controller.analysis) = old
+        win.close()
+        win.deleteLater()

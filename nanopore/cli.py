@@ -9,6 +9,7 @@ from pathlib import Path
 from . import __version__
 from .config import PipelineConfig
 from .mods import all_mods, resolve_mods
+from .registry import detector_ids, normalize_config
 
 
 def _parse_scalar(text: str):
@@ -53,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="event search direction (default auto from the level histogram); "
                         "'both' enables multi-level detection on either side of the baseline "
                         "(needed for peptides like ARNKRS whose blockades go both ways)")
-    r.add_argument("--detector", choices=("level", "burst", "plateau"), default=None,
+    r.add_argument("--detector", choices=detector_ids(), default=None,
                    help="event detector: level (Clampfit semantics, default), burst "
                         "(dwell-envelope debounce), or plateau (hysteresis platform; keeps "
                         "partial recoveries inside one event)")
@@ -183,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg.plateau_exclude_pulse_cleared = False
     if args.keep_rupture:
         cfg.plateau_exclude_rupture = False
+    cfg = normalize_config(cfg)
     if args.save_config:
         cfg.save(args.save_config)
         print(f"config saved: {args.save_config}")

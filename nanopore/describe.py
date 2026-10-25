@@ -26,6 +26,7 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 from scipy.stats import kurtosis, skew
 
+from .params import ParamSpec
 from .steps import (AMP_MIN_PA, EDGE_K, EDGE_LEVEL_M, EDGE_SETTLE_MS, EDGE_WIN,
                     K_MAX, TAU_MIN_US, detect_steps, edge_bounds)
 
@@ -126,20 +127,6 @@ class EventDescription:
     payload: dict[str, Any] = field(default_factory=dict)
     quality: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "1.0"
-
-
-@dataclass(frozen=True)
-class ParamSpec:
-    """Declarative parameter metadata for GUI/CLI generation (Qt-free)."""
-
-    name: str
-    default: Any
-    kind: str = "float"            # float / int / bool / str / choice
-    label: str = ""
-    desc: str = ""
-    minimum: float | None = None
-    maximum: float | None = None
-    choices: tuple[str, ...] = ()
 
 
 class EventDescriber:

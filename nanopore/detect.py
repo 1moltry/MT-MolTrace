@@ -25,7 +25,7 @@ tracked for drift-corrected features).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -46,12 +46,33 @@ class Event:
 
 
 @dataclass
+class DetectionRejection:
+    """A candidate rejected by detector-owned validity rules.
+
+    ``code`` uses a detector-specific namespace (for example
+    ``plateau:pulse_cleared``) so it cannot be mistaken for an anomaly-module
+    reason such as ``membrane_rupture`` or ``reverse_voltage``.
+    """
+
+    event: Event
+    code: str
+    stage: str = "detector"
+
+
+@dataclass
 class DetectionResult:
     events: list[Event]
     levels_initial: np.ndarray   # pA, level values used for classification
     sample_rate_hz: float
     level0_final: float          # baseline after the last update (drift end point)
     level0_refs: np.ndarray      # per-event baseline reference, aligned to events
+    # Detector diagnostics are read-only metadata. They never add or move events
+    # in ``events`` and are independent of the optional anomaly module.
+    rejected: list[DetectionRejection] = field(default_factory=list)
+    masked_intervals: list[tuple[float, float]] = field(default_factory=list)
+    diagnostics: dict[str, int] = field(default_factory=dict)
+    i0_used: bool = False
+    i0_source: str = ""
 
 
 def tau_samples_for(sample_rate_hz: float, cutoff_hz: float | None) -> float:
@@ -555,15 +576,10 @@ def detect_events_burst(
 
 
 def resolve_detector_id(cfg) -> str:
-    """Resolve the event detector id.
+    """Resolve the event detector id through the shared detector registry."""
+    from .registry import resolve_detector_id as resolve
 
-    ``cfg.detector`` is the explicit selector (level / burst / plateau). When it
-    is empty (older configs), fall back to the legacy ``event_mode`` flag.
-    """
-    det = str(getattr(cfg, "detector", "") or "")
-    if det in ("level", "burst", "plateau"):
-        return det
-    return "burst" if getattr(cfg, "event_mode", "level") == "burst" else "level"
+    return resolve(cfg)
 
 
 def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
@@ -610,7 +626,7 @@ def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
         )
 
     if det_id == "burst":
-        return detect_events_burst(
+        result = detect_events_burst(
             current, sample_rate_hz, lv.level0, lv.level1, lv.polarity,
             cutoff_hz=cutoff,
             pre_event_ms=cfg.pre_event_ms,
@@ -625,6 +641,9 @@ def detect(current: np.ndarray, sample_rate_hz: float, lv, cfg, *,
             min_occupied_frac=cfg.burst_min_occupied_frac,
             min_depth_frac=cfg.burst_min_depth_frac,
         )
+        result.i0_used = i0_profile is not None
+        result.i0_source = "detector:burst" if i0_profile is not None else ""
+        return result
     return detect_events(
         current, sample_rate_hz, lv.level0, lv.level1,
         ignore_duration_ms=cfg.ignore_duration_ms,

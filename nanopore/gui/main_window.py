@@ -31,17 +31,7 @@ from .scatterview import ScatterView
 from .segmenttable import SegmentTable
 from .sliceview import SliceView
 from .waveview import WaveView
-
-_DETECTOR_LABELS = {
-    "level": "电平法",
-    "burst": "驻留包络（burst）",
-    "plateau": "平台滞回",
-}
-_DETECTOR_DESC = {
-    "level": "逐样本最近电平；边界在 50% 交叉。适合常规、多电平、肽信号。",
-    "burst": "驻留包络去抖；把毛刺和上下跳合并。适合抖动、碎片化阻孔。",
-    "plateau": "边界贴近开孔；部分恢复不切碎事件。适合糖、长阻孔信号。",
-}
+from ..registry import get_detector
 
 
 class MainWindow(QMainWindow):
@@ -68,7 +58,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(split)
 
         self.event = EventTable()
-        self.excluded = ExcludedView(on_select=self._show_row)
+        self.excluded = ExcludedView(on_select=self._show_excluded_row)
         self.params = ParamPanel()
         self.scatter = ScatterView()
 
@@ -81,7 +71,7 @@ class MainWindow(QMainWindow):
         self.params.run.clicked.connect(lambda: self._auto.stop())
 
         self.dock_event = self._dock("事件", self.event, "dock_event")
-        self.dock_excluded = self._dock("异常事件（剔除）", self.excluded, "dock_excluded")
+        self.dock_excluded = self._dock("剔除 / 异常事件", self.excluded, "dock_excluded")
         self.dock_params = self._dock("参数", self.params, "dock_params")
         self.dock_scatter = self._dock("统计 (直方图/散点)", self.scatter, "dock_scatter")
         self.addDockWidget(Qt.LeftDockWidgetArea, self.dock_event)
@@ -116,7 +106,7 @@ class MainWindow(QMainWindow):
         menu = self.menuBar().addMenu("视图")
         for dock, label in (
             (self.dock_event, "事件表"),
-            (self.dock_excluded, "异常事件表"),
+            (self.dock_excluded, "剔除 / 异常事件表"),
             (self.dock_params, "参数面板"),
             (self.dock_scatter, "统计图"),
         ):
@@ -138,6 +128,7 @@ class MainWindow(QMainWindow):
         c = ctrl_mod.controller
         if c.rec is None:
             return
+        self.params._save_settings()
         c.set_config(self.params.build_config())
         bus.status.emit("参数已更改，自动重跑 …")
         c.rerun()
@@ -166,6 +157,11 @@ class MainWindow(QMainWindow):
         self.detector_desc = QLabel("")
         self.detector_desc.setStyleSheet("color:#57606a; padding:0 10px;")
         bar.addWidget(self.detector_desc)
+        self.anomaly_label = QLabel("异常识别：关")
+        self.anomaly_label.setStyleSheet("color:#8c6d1f; padding:0 10px;")
+        self.anomaly_label.setToolTip(
+            "异常识别是检测后的可选筛查，只剔除已检出事件，不改变任何检测边界。")
+        bar.addWidget(self.anomaly_label)
         bar.addSeparator()
 
         act_cmp = QAction("算法对比…", self)
@@ -185,7 +181,10 @@ class MainWindow(QMainWindow):
 
     def _on_detector_changed(self) -> None:
         det = self.params.current_detector()
-        self.detector_desc.setText(_DETECTOR_DESC.get(det, ""))
+        try:
+            self.detector_desc.setText(get_detector(det).desc)
+        except KeyError:
+            self.detector_desc.setText("")
 
     def set_detector(self, detector: str) -> None:
         """Select an algorithm from outside (compare dialog / home card)."""
@@ -270,18 +269,54 @@ class MainWindow(QMainWindow):
         self.wave.set_data(c.rec, c.lv, c.df, c.anom)
         self.scatter.set_data(c.df)
         self.event.set_data(c.df)
-        self.excluded.set_data(c.df_excluded)
+        analysis = getattr(c, "analysis", None)
+        anomaly_enabled = (analysis.anomaly_enabled
+                           if analysis is not None else False)
+        detector_rejected = (analysis.detector_rejected
+                             if analysis is not None else 0)
+        self.excluded.set_data(
+            c.df_excluded, anomaly_enabled=anomaly_enabled,
+            detector_rejected=detector_rejected)
         self.slice.clear()
         self.segments.clear()
         self._current_number = None
 
-        det = self.params.current_detector()
+        det_id = (analysis.detector_id if analysis is not None
+                  else self.params.current_detector())
+        try:
+            det_label = get_detector(det_id).label
+        except KeyError:
+            det_label = det_id
         n_raw = len(c.det.events) if c.det is not None else 0
         n_keep = len(c.df) if c.df is not None else 0
         n_exc = len(c.df_excluded) if c.df_excluded is not None else 0
+        stage_counts: dict[str, int] = {}
+        if c.df_excluded is not None and "drop_stage" in c.df_excluded.columns:
+            for stage in c.df_excluded["drop_stage"]:
+                for part in str(stage).split("+"):
+                    if part:
+                        stage_counts[part] = stage_counts.get(part, 0) + 1
+        detail = []
+        for key, label in (("anomaly", "异常"), ("toff", "时长"),
+                           ("detector", "检测规则")):
+            if stage_counts.get(key):
+                detail.append(f"{label} {stage_counts[key]}")
+        detail_text = f"（{' / '.join(detail)}）" if detail else ""
         self.summary_label.setText(
-            f"{_DETECTOR_LABELS.get(det, det)} · 检出 {n_raw} · "
-            f"保留 {n_keep} · 剔除 {n_exc}")
+            f"{det_label} · 候选 {n_raw + detector_rejected} · "
+            f"保留 {n_keep} · 剔除 {n_exc}{detail_text}")
+        if anomaly_enabled:
+            self.anomaly_label.setText("异常识别：开（仅后处理）")
+            self.anomaly_label.setStyleSheet("color:#116329; padding:0 10px;")
+            if det_id == "burst":
+                self.anomaly_label.setToolTip(
+                    "burst 的事件边界在异常识别之前确定；异常只会剔除事件，"
+                    "不会改变 burst 的检测结果。")
+        else:
+            self.anomaly_label.setText("异常识别：关")
+            self.anomaly_label.setStyleSheet("color:#8c6d1f; padding:0 10px;")
+            self.anomaly_label.setToolTip(
+                "本次未筛查反压、膜抖、炸膜或漂移；剔除数只代表检测规则与时长过滤。")
         if c.rec is not None:
             self.path_label.setText(Path(c.rec.path).name)
             self.path_label.setToolTip(str(c.rec.path))
@@ -318,6 +353,12 @@ class MainWindow(QMainWindow):
             self.home_requested.emit()
             return
         super().closeEvent(event)
+
+    def _show_excluded_row(self, row, _number: int | None = None) -> None:
+        """Review a removed event without borrowing a kept event's fingerprint."""
+        self._current_number = None
+        self.event.view.clearSelection()
+        self._show_row(row, number=None)
 
     def _show_row(self, row, number: int | None = None) -> None:
         """Focus the main view on an event span (pan, no zoom) + fill the slice."""

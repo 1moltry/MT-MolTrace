@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QProgressBar, QPushButton, QVBoxLayout)
 
 from ..pipeline import run_batch
+from ..registry import list_detectors, normalize_config, resolve_detector_id
 
 
 def collect_abf_files(items: list[str]) -> list[Path]:
@@ -97,10 +98,9 @@ class BatchDialog(QDialog):
         out_row.addWidget(self.out_btn)
 
         self.detector = QComboBox()
-        for det, label in (("level", "电平法"), ("burst", "驻留包络（burst）"),
-                           ("plateau", "平台滞回")):
-            self.detector.addItem(label, det)
-        idx = self.detector.findData(cfg.detector or cfg.event_mode)
+        for spec in list_detectors():
+            self.detector.addItem(spec.label, spec.id)
+        idx = self.detector.findData(resolve_detector_id(cfg))
         self.detector.setCurrentIndex(idx if idx >= 0 else 0)
         self.detector.currentIndexChanged.connect(self._on_detector)
         self.algo_note = QLabel("")
@@ -176,10 +176,7 @@ class BatchDialog(QDialog):
 
     def _on_detector(self, *_args) -> None:
         det = str(self.detector.currentData())
-        self._cfg = replace(
-            self._cfg, detector=det,
-            event_mode="burst" if det == "burst" else "level",
-        )
+        self._cfg = normalize_config(replace(self._cfg, detector=det))
         if det == "plateau":
             self.algo_note.setText(
                 f"进入 {self._cfg.plateau_enter_depth_pA:g} pA · "
@@ -203,7 +200,7 @@ class BatchDialog(QDialog):
         dlg = ParamDialog(self._cfg, self)
         if dlg.exec_():
             self._cfg = dlg.config()
-            det = self._cfg.detector or self._cfg.event_mode
+            det = resolve_detector_id(self._cfg)
             self.detector.blockSignals(True)
             idx = self.detector.findData(det)
             self.detector.setCurrentIndex(idx if idx >= 0 else 0)
@@ -241,8 +238,11 @@ class BatchDialog(QDialog):
         if getattr(rep, "error", ""):
             self._log(f"[{i}/{total}] {name}: 失败 — {rep.error}")
         else:
+            valid = (f"{rep.valid_pct:.0f}%" if rep.valid_pct is not None
+                     else "未筛查")
             self._log(f"[{i}/{total}] {name}: {rep.n_events} 事件 "
-                      f"(原始 {rep.n_events_raw})，有效 {rep.valid_pct:.0f}%")
+                      f"(候选 {rep.n_events_raw}，检测规则剔除 "
+                      f"{rep.n_detector_rejected})，有效 {valid}")
 
     def _on_done(self, reports) -> None:
         ok = sum(1 for r in reports if not getattr(r, "error", ""))

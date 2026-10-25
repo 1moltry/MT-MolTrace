@@ -95,6 +95,8 @@ def test_classify_exclusions_combines_anomaly_and_toff():
     # baseline_step only -> kept; row2 short only -> toff<min
     assert kept["t1"].tolist() == [20.5]
     assert excl["drop_reason"].tolist() == ["blockage,toff<min", "toff<min"]
+    assert excl["drop_stage"].tolist() == ["anomaly+toff", "toff"]
+    assert not {"drop_reason", "drop_code", "drop_stage"} & set(kept.columns)
 
 
 def test_classify_exclusions_empty_df():

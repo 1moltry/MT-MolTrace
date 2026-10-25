@@ -51,17 +51,26 @@ def classify_exclusions(
         df["t1"].to_numpy(), df["t2"].to_numpy(), regions or []
     )
     reasons = np.asarray(reasons, dtype=object)
+    has_anomaly = reasons != ""
+    has_short = np.zeros(len(df), dtype=bool)
     if min_toff_ms is not None:
-        short = df["toff"].to_numpy() <= min_toff_ms
+        has_short = df["toff"].to_numpy() <= min_toff_ms
         reasons = np.where(
-            short,
+            has_short,
             np.where(reasons == "", "toff<min", reasons + ",toff<min"),
             reasons,
         )
     df["drop_reason"] = reasons
+    df["drop_code"] = reasons
+    df["drop_stage"] = np.select(
+        [has_anomaly & has_short, has_anomaly, has_short],
+        ["anomaly+toff", "anomaly", "toff"],
+        default="",
+    )
     keep = df["drop_reason"] == ""
     df_excluded = df[~keep].reset_index(drop=True)
-    df_kept = df[keep].reset_index(drop=True).drop(columns=["drop_reason"])
+    df_kept = (df[keep].reset_index(drop=True)
+                 .drop(columns=["drop_reason", "drop_code", "drop_stage"]))
     return df_kept, df_excluded
 
 

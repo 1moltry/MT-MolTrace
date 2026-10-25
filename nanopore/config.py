@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -135,11 +136,26 @@ class PipelineConfig:
     # --- output ---
     label: str = ""                    # Label column value; defaults to file stem
 
+    def __post_init__(self) -> None:
+        # JSON has no tuples: canonicalize collection fields on every path so
+        # save -> load preserves equality and callers can compare configurations.
+        self.enabled_mods = tuple(self.enabled_mods or ())
+        self.describe_params = dict(self.describe_params or {})
+
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8")
 
     @classmethod
+    def from_dict(cls, data: dict) -> "PipelineConfig":
+        valid = {f.name for f in fields(cls)}
+        unknown = sorted(set(data) - valid)
+        if unknown:
+            warnings.warn(
+                "ignoring unknown config key(s): " + ", ".join(unknown),
+                UserWarning, stacklevel=2)
+        return cls(**{k: v for k, v in data.items() if k in valid})
+
+    @classmethod
     def load(cls, path: str | Path) -> "PipelineConfig":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
-        valid = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in valid})
+        return cls.from_dict(data)

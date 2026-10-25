@@ -10,7 +10,7 @@ from __future__ import annotations
 from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt5.QtWidgets import (QLabel, QTableView, QVBoxLayout, QWidget)
 
-COLS = ["t1", "t2", "toff", "mean", "Io", "state", "drop_reason"]
+COLS = ["t1", "t2", "toff", "mean", "Io", "state", "drop_stage", "drop_reason"]
 
 
 class ExcludedModel(QAbstractTableModel):
@@ -42,7 +42,10 @@ class ExcludedModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             if index.column() == 0:
                 return str(index.row() + 1)
-            v = self._df.iloc[index.row()][COLS[index.column() - 1]]
+            col = COLS[index.column() - 1]
+            if col not in self._df.columns:
+                return ""
+            v = self._df.iloc[index.row()][col]
             if isinstance(v, float):
                 return "nan" if v != v else f"{v:.4g}"
             return str(v)
@@ -73,16 +76,32 @@ class ExcludedView(QWidget):
 
         self.view.selectionModel().currentChanged.connect(self._row_changed)
 
-    def set_data(self, excluded) -> None:
+    def set_data(self, excluded, *, anomaly_enabled: bool | None = None,
+                 detector_rejected: int = 0) -> None:
         self._df = excluded
         self.model.set_df(excluded)
         self.view.resizeColumnsToContents()
+        note = ""
+        if anomaly_enabled is False:
+            note = ("\n异常识别未启用：本表只含检测规则/时长剔除，"
+                    "未筛查反压、膜抖、炸膜与漂移。")
+        elif anomaly_enabled is True:
+            note = "\n异常识别已启用：只对已检出事件做后处理，不改变事件边界。"
         if excluded is None or len(excluded) == 0:
-            self.summary.setText("剔除事件 0")
+            if anomaly_enabled is False:
+                head = "剔除事件 0（仅检测规则/时长检查）"
+            elif anomaly_enabled is True:
+                head = "剔除事件 0（异常识别已启用，未发现异常区间）"
+            else:
+                head = "剔除事件 0"
+            self.summary.setText(head + note)
             return
         by = excluded["drop_reason"].value_counts()
-        self.summary.setText(f"剔除事件 {len(excluded)}："
-                             + "，".join(f"{k}×{v}" for k, v in by.items()))
+        head = (f"剔除事件 {len(excluded)}："
+                + "，".join(f"{k}×{v}" for k, v in by.items()))
+        if detector_rejected:
+            head += f"；其中检测规则剔除 {detector_rejected} 个"
+        self.summary.setText(head + note)
 
     def _row_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
         if not current.isValid() or self._df is None or self._on_select is None:

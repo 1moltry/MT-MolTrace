@@ -74,7 +74,7 @@ python -m nanopore gui "abf数据案例/abf数据案例/Ala.abf"   # 启动并�
 
 | 文件 | 内容 |
 |------|------|
-| `<名>_events.xlsx` | 事件特征表（events sheet，列名遵循课题组既定特征表规范）+ **excluded sheet**（被剔除事件及其 `drop_reason`，如 `membrane_rupture` / `baseline_drift` / `jitter` / `toff<min`）+ 异常区间表（anomalies sheet，含细粒度 kind：reverse_voltage / membrane_rupture / baseline_drift / membrane_jitter_mild·severe / blockage_spontaneous·manual） |
+| `<名>_events.xlsx` | 事件特征表（events sheet，列名遵循课题组既定特征表规范）+ **excluded sheet**（被剔除事件及其 `drop_stage` / `drop_code` / `drop_reason`；异常 kind 如 `membrane_rupture`、`baseline_drift`，检测器规则如 `plateau:rupture`，导出过滤如 `toff<min`）+ 异常区间表（启用异常模块时生成） |
 | `<名>_overview.png` | 全程轨迹（块均值）+ 蓝色理想化事件线 + 硬异常淡色带（红=breakdown/炸膜，橙=blockage，紫=jitter，蓝=反压/人工恢复，棕=baseline_drift；baseline_step 仅在异常表，不画） |
 | `<名>_scatter.png` | 2×2 散点：dwell/时间 × ΔI、dwell/时间 × Io。ΔI 按正负分色（ΔI<0 蓝、ΔI≥0 红），纵轴保持线性并保留全部事件（含远离主群的真实电平）；toff 跨度超一个数量级时横轴转对数 |
 | `<名>_hist.png` | 深度直方图 + log10 时长直方图 |
@@ -84,7 +84,7 @@ python -m nanopore gui "abf数据案例/abf数据案例/Ala.abf"   # 启动并�
 
 | 文件 | 内容 |
 |------|------|
-| `summary.xlsx` | 每文件事件数、brief 数、有效率、level0、极性、噪声 σ、异常计数、错误、耗时 |
+| `summary.xlsx` | 每文件事件数、候选数、检测规则剔除数、异常是否启用、有效率（异常关闭时为空）、检测器、level0、极性、噪声 σ、异常计数、错误、耗时 |
 | `dataset_all.csv` | 全部文件的保留事件纵向拼接（每行一个事件），供 MATLAB / 机器学习使用，含 `source_file` 列回溯来源 |
 
 ### 导入 MATLAB / 机器学习
@@ -128,7 +128,7 @@ end
 |-----|------|------|----------|------|
 | `lowpass` | 预处理 | 检测前低通滤波 | `filter_lowpass_hz` | 滤波后信号 |
 | `dynamic_i0` | 预处理 | 动态开孔基线，逐事件 Io | `dr_pA` | 逐事件 Io |
-| `anomaly` | 异常检测 | 宏异常（反压 / 膜抖 / 炸膜 / 漂移） | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
+| `anomaly` | 异常检测 | 检测后的可选异常区间（反压 / 膜抖 / 炸膜 / 漂移）；不改变事件边界 | `jump_min_ms` 等 | anomalies sheet + 区带 + 剔除 |
 | `refined_anomaly` | 异常检测 | 细粒度分级异常（依赖 `anomaly` + `dynamic_i0`） | `refined_*` | 分级 kind |
 | `plots` | 单文件输出 | 输出三张图 | — | `_overview/_scatter/_hist.png` |
 | `waveform_export` | 单文件输出 | 每事件原始电流序列 | — | `<名>_events.mat` |
@@ -140,6 +140,10 @@ end
 **检测变体不是模块**：事件极性（`polarity`）、事件平台占比（毛刺门控）等仍在参数里，它们改变底座「怎么检测」，与模块正交。
 
 > **行为变更**：默认「只底座」不同于旧版（旧版默认全开异常 / 图 / 合并表 / 汇总）。需要旧行为用 `--all`。
+
+异常识别是**检测后的可选后处理**：关闭时结果对象与界面都明确标记“未筛查”，不会用 `有效 100%` 冒充已检查；开启时也只剔除已检出事件，不改变 level / burst / plateau 的事件边界。检测器自身的候选有效性规则单独记为 `drop_stage=detector`，与异常原因分属不同命名空间。GUI 顶部的“异常识别：开/关”标签显示本次实际状态。
+
+检测器目录集中在 `nanopore/registry.py`，GUI、CLI、批处理与对比窗口都从同一份元数据生成选项。参数面板从上次载入的完整协议增量覆盖；未在界面暴露的配置字段不再被重置。未知配置键会告警，不再静默丢弃。
 
 ## 检测模式：电平法 / 驻留包络去抖（burst）
 
@@ -229,8 +233,11 @@ nanopore/          Python 包
 ├── preprocess.py  可选低通滤波
 ├── baseline.py    自动 Level0/Level1 估计
 ├── baseline_i0.py 动态 I0(t) 开孔电流基线（逐事件 Io 免疫阻孔漂移）
-├── detect.py      事件检测（电平法 / burst）
-├── anomaly.py     异常检测（宏块包络 + 细粒度：电压 protocol 段 / 分级膜抖 / 炸膜）
+├── detect.py      事件检测分派（电平法 / burst）与检测诊断
+├── detect_plateau.py 平台滞回检测（含可追溯的检测器有效性剔除）
+├── params.py      通用参数元数据（ParamSpec）
+├── registry.py    检测器目录、id 解析与配置规范化
+├── anomaly.py     异常检测（可选后处理；不参与事件边界）
 ├── features.py    特征提取（列名遵循课题组既定特征表规范）
 ├── roi.py         Cursor 局部分析（子区间独立电平重析）
 ├── analysis.py    输出：事件表 / 图 / 合并表 / 事件波形 .mat

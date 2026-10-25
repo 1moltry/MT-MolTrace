@@ -27,6 +27,7 @@ from .config import PipelineConfig
 from .detect import DetectionResult, detect, resolve_detector_id
 from .features import classify_exclusions, compute_features
 from .mods import resolve_mods
+from .registry import normalize_config
 
 
 @dataclass
@@ -40,6 +41,12 @@ class AnalysisResult:
     df: pd.DataFrame               # kept events (feature table)
     df_excluded: pd.DataFrame | None
     descs: list | None = None      # per-kept-event EventDescription (mod "describe")
+    detector_id: str = ""
+    detector_rejected: int = 0
+    enabled_mods: tuple[str, ...] = ()
+    anomaly_enabled: bool = False
+    i0_used: bool = False
+    i0_source: str = ""
 
 
 def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> AnalysisResult:
@@ -48,6 +55,7 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
     ``with_descriptions=False`` skips the (potentially slow) per-event describe
     stage; the GUI computes descriptions lazily for the selected event instead.
     """
+    cfg = normalize_config(cfg)
     mods = set(resolve_mods(cfg.enabled_mods))
 
     lv = estimate_levels(
@@ -121,13 +129,54 @@ def analyze(rec, cfg: PipelineConfig, *, with_descriptions: bool = True) -> Anal
     )
     df, df_excluded = classify_exclusions(df, anom.regions if anom else [], cfg.min_toff_ms)
 
+    # Detector-owned validity rejections are not anomaly regions. Give them the
+    # same feature columns and a distinct drop stage/code so the UI and exports
+    # can trace them without mixing them into the optional anomaly counts.
+    if det.rejected:
+        rejected_events = [r.event for r in det.rejected]
+        rejected_res = DetectionResult(
+            events=rejected_events,
+            levels_initial=det.levels_initial,
+            sample_rate_hz=det.sample_rate_hz,
+            level0_final=det.level0_final,
+            level0_refs=np.array([e.level0_ref_pA for e in rejected_events],
+                                 dtype=float),
+        )
+        rejected_df = compute_features(
+            rejected_res,
+            filtered,
+            rec.sample_rate_hz,
+            label=cfg.label or rec.path.stem,
+            pre_event_ms=cfg.pre_event_ms,
+            dr_pA=cfg.dr_pA,
+            i0_profile=i0_profile,
+        )
+        rejected_df["drop_reason"] = [r.code for r in det.rejected]
+        rejected_df["drop_code"] = [r.code for r in det.rejected]
+        rejected_df["drop_stage"] = [r.stage for r in det.rejected]
+        if df_excluded is None or len(df_excluded) == 0:
+            df_excluded = rejected_df.reset_index(drop=True)
+        else:
+            df_excluded = pd.concat([df_excluded, rejected_df], ignore_index=True)
+
     descs = None
     if with_descriptions and "describe" in mods:
         from .describe import describe_rows
 
         descs = describe_rows(df, rec, cfg)
 
-    return AnalysisResult(rec, lv, filtered, det, i0_profile, anom, df, df_excluded, descs)
+    detector_id = resolve_detector_id(cfg)
+    anomaly_enabled = "anomaly" in mods
+    i0_used = bool(detector_id == "burst" and i0_for_detect is not None)
+    return AnalysisResult(
+        rec, lv, filtered, det, i0_profile, anom, df, df_excluded, descs,
+        detector_id=detector_id,
+        detector_rejected=len(det.rejected),
+        enabled_mods=tuple(sorted(mods)),
+        anomaly_enabled=anomaly_enabled,
+        i0_used=i0_used,
+        i0_source="detector:burst" if i0_used else "",
+    )
 
 
 def _artifact_config(cfg: PipelineConfig):

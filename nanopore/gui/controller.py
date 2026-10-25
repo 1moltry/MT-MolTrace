@@ -17,7 +17,8 @@ from .bus import bus
 
 
 class AnalysisWorker(QThread):
-    done = pyqtSignal(object, object, object, object, object)   # rec, lv, df, df_excluded, (anom, det)
+    done = pyqtSignal(object, object, object, object, object, object)
+    # rec, levels, kept df, excluded df, (anomaly, detection), full AnalysisResult
     failed = pyqtSignal(str)
 
     def __init__(self, path: str | Path, cfg: PipelineConfig):
@@ -29,7 +30,8 @@ class AnalysisWorker(QThread):
         try:
             rec = read_abf(self.path)
             res = analyze(rec, self.cfg, with_descriptions=False)
-            self.done.emit(res.rec, res.lv, res.df, res.df_excluded, (res.anom, res.det))
+            self.done.emit(res.rec, res.lv, res.df, res.df_excluded,
+                           (res.anom, res.det), res)
         except Exception as exc:  # surface as a status message, keep the app alive
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -96,6 +98,7 @@ class Controller(QObject):
         self.df_excluded = None
         self.anom = None
         self.det = None
+        self.analysis = None
         self.cfg: PipelineConfig = PipelineConfig()
         self._worker: AnalysisWorker | None = None
         self._workers: list[AnalysisWorker] = []   # keep refs until finished
@@ -189,7 +192,8 @@ class Controller(QObject):
         self._worker = worker
         self._workers.append(worker)
         worker.done.connect(
-            lambda rec, lv, df, dx, ad, g=gen: self._on_done(rec, lv, df, dx, ad, g))
+            lambda rec, lv, df, dx, ad, res, g=gen:
+            self._on_done(rec, lv, df, dx, ad, res, g))
         worker.failed.connect(lambda msg, g=gen: self._on_failed(msg, g))
         worker.finished.connect(lambda w=worker: self._release(w))
         bus.status.emit(f"分析中: {Path(path).name} …")
@@ -208,15 +212,19 @@ class Controller(QObject):
             if self.rec is not None:
                 self._start(self.rec.path)
 
-    def _on_done(self, rec, lv, df, df_excluded, anom_det, gen: int) -> None:
+    def _on_done(self, rec, lv, df, df_excluded, anom_det, analysis, gen: int) -> None:
         if gen != self._gen:
             return                       # superseded by a newer run
         self.rec, self.lv, self.df = rec, lv, df
         self.df_excluded = df_excluded
         self.anom, self.det = anom_det
+        self.analysis = analysis
         n_removed = len(df_excluded) if df_excluded is not None else 0
-        mode = getattr(self.cfg, "event_mode", "level")
-        bus.status.emit(f"完成[{mode}]: {rec.path.name}\t保留 {len(df)} / 剔除 {n_removed}（明细见异常面板）")
+        anomaly = "异常识别：开" if analysis.anomaly_enabled else "异常识别：关"
+        bus.status.emit(
+            f"完成[{analysis.detector_id}]: {rec.path.name}\t"
+            f"保留 {len(df)} / 剔除 {n_removed}"
+            f"（检测规则 {analysis.detector_rejected}） · {anomaly}")
         bus.file_loaded.emit(str(rec.path))
         bus.detection_finished.emit()
         self._after_run(gen)
