@@ -61,6 +61,16 @@
 
 ## 近期详细记录
 
+### [2026-10-25] 阶段 7 自测包（v3.1.0，未发布）
+
+**构建**：从提交 `f0cddd3` 的干净树构建 `release/MOLTRACE_v3.1.0_phase7_selftest_win64.zip`（162 MB zip / 391 MB 解压 / 1931 条目），SHA-256 `4803fd70b582cca20f7d8606b74021a6287007b5789aa4423f2c8fa8e4e20f1f`。构建 venv 含 `research` extra，PyInstaller hidden imports 已包含 `nanopore.fingerprint.research`、`ruptures`、`sklearn.cluster`。
+
+**自测**：归档/PYZ 中确认存在全部 `nanopore.fingerprint.research.*` 模块、`ruptures.detection` 与 `sklearn.cluster`；冻结 GUI 离屏启动 8 s 未崩，带 `Ala.abf` 启动 20 s 未崩。研究功能的交互式语料/拟合/解码尚未在冻结包中人工点击，留待阶段 8 完整 GUI 验收。
+
+**说明**：版本号暂未提升；自测包改名 `phase7_selftest` 以区别于正式 v3.1.0；未上传 Release。
+
+---
+
 ### [2026-10-25] 阶段 7：实验性形状研究发现
 
 **变更**
