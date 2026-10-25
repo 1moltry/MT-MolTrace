@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt5.QtCore import QThread, QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QLineEdit, QListWidget, QPlainTextEdit,

@@ -233,12 +233,15 @@ nanopore/          Python 包
 ├── preprocess.py  可选低通滤波
 ├── baseline.py    自动 Level0/Level1 估计
 ├── baseline_i0.py 动态 I0(t) 开孔电流基线（逐事件 Io 免疫阻孔漂移）
-├── detect.py      事件检测分派（电平法 / burst）与检测诊断
+├── detect.py      事件检测分派（电平法 / burst / plateau）与检测诊断
 ├── detect_plateau.py 平台滞回检测（含可追溯的检测器有效性剔除）
 ├── params.py      通用参数元数据（ParamSpec）
 ├── registry.py    检测器目录、id 解析与配置规范化
 ├── anomaly.py     异常检测（可选后处理；不参与事件边界）
 ├── features.py    特征提取（列名遵循课题组既定特征表规范）
+├── steps.py       事件内台阶分割（DP + BIC）
+├── fingerprint/   事件指纹：契约、上下文、描述器注册与执行
+├── describe.py    旧描述层导入路径的兼容门面
 ├── roi.py         Cursor 局部分析（子区间独立电平重析）
 ├── analysis.py    输出：事件表 / 图 / 合并表 / 事件波形 .mat
 ├── analyze.py     共享分析编排（底座 + 模块；pipeline 与 GUI 共用）

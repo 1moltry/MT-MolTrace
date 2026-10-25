@@ -9,7 +9,6 @@ F3 — the dynamic I0 baseline must anchor near the open-pore level, not the
      first quiet window (which can be a non-pore flat gap or secondary state).
 """
 import numpy as np
-import pytest
 
 from tests.synth import SynthSignal
 
@@ -27,7 +26,7 @@ def _profile(sig, **kw):
 
 
 def _ref(sig, **kw):
-    from nanopore.anomaly import ArtifactConfig, detect_artifact_segments
+    from nanopore.anomaly import detect_artifact_segments
 
     return detect_artifact_segments(sig.current, sig.sample_rate_hz, **kw)
 
@@ -64,8 +63,6 @@ def test_dense_event_cluster_not_rupture():
             break
         seg[i:e] = 15.0 + rng.normal(0.0, 2.0, e - i)
     # a few events are so dense the window IQR (~85) clears the broad threshold
-    from collections import Counter
-
     sig = SynthSignal(current=cur, sample_rate_hz=sr, baseline_pA=100.0)
     lv = _level(sig)
     prof = _profile(sig, anchor_level=lv.level0)
@@ -134,6 +131,5 @@ def test_baseline_anchors_near_open_pore_not_first_quiet():
     lv = _level(sig)
     # with anchor_level=100, baseline near open pore; without, it anchors at 0
     prof_a = _profile(sig, anchor_level=lv.level0)
-    prof_b = _profile(sig)
     assert abs(np.median(prof_a.baseline[:sr]) - 100.0) < 15.0, \
         f"anchored baseline {np.median(prof_a.baseline[:sr]):.1f} should be ~100"

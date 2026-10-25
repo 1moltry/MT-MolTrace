@@ -44,7 +44,6 @@ def test_float_abf1_reader_singles_sweeps():
 def test_read_abf_detects_events_in_kchann():
     """End-to-end: the pipeline should find clean openings in kchann.abf."""
     from nanopore.baseline import estimate_levels
-    from nanopore.config import PipelineConfig
     from nanopore.detect import detect_events
     from nanopore.io import read_abf
 

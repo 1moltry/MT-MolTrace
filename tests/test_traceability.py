@@ -1,7 +1,6 @@
 """P1: traceable exclusion reasons + config wiring round-trips."""
 
 import numpy as np
-import pytest
 
 from nanopore.anomaly import AnomalyRegion, invalid_region_reasons
 from nanopore.config import PipelineConfig

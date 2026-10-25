@@ -25,8 +25,4 @@ dist/
 # --- 仅本机使用，不入库 ---
 # AI 助手配置，非项目文档；项目约定见 CONTRIBUTING.md 与 README.md
 CLAUDE.md
-# 个人目标草稿；内容已被 README「路线图」覆盖
-goal.md
-# goal.md 引用的异常形态示意图
-8a558a98ab8c5117f70bb8af1f98b646-1.png
 .claude/settings.local.json

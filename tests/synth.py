@@ -69,7 +69,6 @@ def make_sweepy_square_pulses(
 ) -> SynthSignal:
     """Random blockade pulses below baseline (typical nanopore sensing trace)."""
     rng = np.random.default_rng(kwargs.pop("seed", 0))
-    sample_rate_hz = kwargs.get("sample_rate_hz", 25_000.0)
     events, t = [], 0.5
     for _ in range(n_events):
         dwell = rng.uniform(*dwell_range_s)

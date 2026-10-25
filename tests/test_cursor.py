@@ -6,7 +6,6 @@ and events inside a blocked ROI must not leak into an ROI placed on a clean
 region.
 """
 
-import numpy as np
 import pytest
 
 from tests.synth import SynthEvent, make_signal

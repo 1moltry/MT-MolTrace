@@ -49,18 +49,6 @@ class Step:
     snr: float                 # (|amp|/sigma) * sqrt(tau * fs)
 
 
-@dataclass
-class StepResult:
-    """Per-event step sequences (kept for callers that process whole files)."""
-
-    events: list[list[Step]]
-    k_bic: list[int]
-    decim: list[int]
-    t_in: list[int]
-    t_out: list[int]
-    n_skipped: int = 0
-
-
 def _dp_fit_python(c: np.ndarray, c2: np.ndarray, n: int,
                    k_max: int) -> tuple[np.ndarray, list[np.ndarray | None]]:
     """Reference DP (numpy). Same recurrence as the compiled kernel below."""
@@ -209,15 +197,6 @@ def _merge_low_snr(means: list[float], lengths: list[int], fs: float, decim: int
                 changed = True
                 break
     return means, lengths
-
-
-def _open_sigma(wave: np.ndarray, rel_start: int, rel_end: int,
-                i_open: float, tol: float = 15.0) -> float:
-    """Noise sigma from samples near the open level, outside the body."""
-    idx = np.concatenate((np.arange(0, rel_start), np.arange(rel_end, wave.size)))
-    x = wave[idx]
-    x = x[np.abs(x - i_open) < tol]
-    return float(np.std(x)) if x.size >= 10 else 1.0
 
 
 def _first_long_run(mask: np.ndarray, m: int) -> int:

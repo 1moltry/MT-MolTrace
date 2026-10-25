@@ -267,8 +267,6 @@ class ArtifactConfig:
     Defaults are the values validated against the lab's annotated recordings.
     """
 
-    voltage_threshold_mV: float = -5.0        # (legacy) absolute negative-rail test, kept
-                                              # for callers that pass a fixed threshold
     hold_voltage_mV: float | None = None      # recording hold voltage; None = median of the
                                               # voltage trace (the dominant protocol level, i.e.
                                               # the sensing segment). Any sustained deviation
@@ -399,7 +397,6 @@ def detect_artifact_segments(
             w_base[i] = float(np.median(i0_profile.baseline[a:b])) if b > a else float(open_pore)
         else:
             w_base[i] = float(open_pore)
-    excluded = np.zeros(n, dtype=bool)   # not used for gating; reverse overlap kept
     regions: list[AnomalyRegion] = []
     # window noise ratio vs the quiet reference (shared by rupture and jitter)
     ratio = np.divide(w_noise, reference_noise, out=np.zeros(nwin),

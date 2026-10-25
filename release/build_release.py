@@ -108,11 +108,9 @@ FORBIDDEN = (
     "data",
     "release",
     "CLAUDE.md",
-    "goal.md",
     "MOLTRACE.bat",
     "MOLTRACE-debug.bat",
-    "PLAN_burst_detection.md",
-    "PLAN_mods_architecture.md",
+    "PLAN_fingerprint_platform.md",
 )
 
 

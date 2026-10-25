@@ -176,8 +176,6 @@ def estimate_levels(
             level1 = min(significant, key=lambda v: abs(v - baseline))
         else:
             level1 = max(event_levels, key=frac)
-        above = any(v > baseline for v in event_levels)
-        below = any(v < baseline for v in event_levels)
         # polarity from the side level1 sits on; bidirectional when both sides
         # carry significant populations
         sig_above = [v for v in event_levels if v > baseline and frac(v) >= 0.02]

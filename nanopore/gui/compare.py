@@ -21,7 +21,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (QCheckBox, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QLineEdit, QMessageBox, QPushButton,
                              QSplitter, QTableWidget, QTableWidgetItem,
-                             QVBoxLayout, QWidget)
+                             QVBoxLayout)
 
 from ..analyze import analyze
 from ..config import PipelineConfig

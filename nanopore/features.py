@@ -97,7 +97,6 @@ def compute_features(
     build the profile.
     """
     sr = sample_rate_hz
-    dt = 1.0 / sr
     pre_n = int(round(pre_event_ms * 1e-3 * sr))
     body_pre = int(round((pre_event_ms + after_event_ms) * 1e-3 * sr))
 

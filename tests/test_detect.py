@@ -1,7 +1,5 @@
 """Regression tests for event detection against analytic ground truth."""
 
-import numpy as np
-
 from tests.synth import SynthEvent, make_signal
 
 

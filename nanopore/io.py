@@ -92,13 +92,6 @@ class AbfRecording:
     def duration_s(self) -> float:
         return len(self.current) / self.sample_rate_hz
 
-    def _auto_channel(self, predicate, default: int | None) -> int | None:
-        chans = self.channel_units or []
-        for i, u in enumerate(chans):
-            if predicate(u):
-                return i
-        return default
-
 
 def _sniff_kind(path: Path) -> str:
     """Classify an ABF file from its header: 'abf2', 'abf1_int', 'abf1_float'."""

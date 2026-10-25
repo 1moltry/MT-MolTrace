@@ -4,7 +4,6 @@ import os
 from dataclasses import fields
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from nanopore.analyze import analyze

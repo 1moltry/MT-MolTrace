@@ -117,7 +117,6 @@ def test_membrane_rupture_state_machine():
     after 5 quiet windows. A single broad blip is not rupture."""
     sr = 25_000
     n = int(16 * sr)
-    t = np.arange(n) / sr
     rng = np.random.default_rng(59)
     cur = 100.0 + rng.normal(0.0, 1.0, n)
     # rupture-like: 3 s of violent noise spanning ~250 pA

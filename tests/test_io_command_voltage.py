@@ -52,7 +52,6 @@ def test_tpal_wash_segments_excluded_from_events():
     event may overlap a protocol segment."""
     if not _have_tpal():
         pytest.skip("tPAL sample data not present")
-    import pandas as pd
 
     from nanopore.anomaly import detect_artifact_segments
     from nanopore.baseline import estimate_levels

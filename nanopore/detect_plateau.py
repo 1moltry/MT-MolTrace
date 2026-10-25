@@ -177,7 +177,6 @@ def detect_plateau(
     """
     I = np.asarray(current, dtype=float)
     fs = float(sample_rate_hz)
-    n = len(I)
     dt = 1.0 / fs
     if direction not in ("down", "up", "both"):
         raise ValueError(f"direction must be down/up/both, got {direction!r}")
@@ -250,17 +249,6 @@ def detect_plateau(
         dur = b - a
         if dur <= 0:
             continue
-        # choose the dominant side for direction="both"
-        if direction == "down":
-            sign, dev = 1.0, dev_down
-        elif direction == "up":
-            sign, dev = -1.0, dev_up
-        else:
-            if dev_down[a:b].max() >= dev_up[a:b].max():
-                sign, dev = 1.0, dev_down
-            else:
-                sign, dev = -1.0, dev_up
-
         body = I[a + trim: b - trim] if dur > trim + 2 else I[a + (dur // 2): a + (dur // 2) + 1]
         amp = float(np.mean(body))
         state = "B" if dur < brief_len else "A"
